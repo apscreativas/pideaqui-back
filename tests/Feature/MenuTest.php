@@ -126,77 +126,130 @@ class MenuTest extends TestCase
         $this->assertDatabaseMissing('products', ['id' => $product->id]);
     }
 
-    public function test_admin_can_create_modifier_group(): void
-    {
-        [$user, $restaurant] = $this->createAdminWithRestaurant();
-
-        $response = $this->withoutVite()->actingAs($user)->post(route('modifiers.store'), [
-            'name' => 'Elige tu tortilla',
-            'selection_type' => 'single',
-            'is_required' => true,
-            'sort_order' => 0,
-        ]);
-
-        $response->assertRedirect();
-        $this->assertDatabaseHas('modifier_groups', [
-            'restaurant_id' => $restaurant->id,
-            'name' => 'Elige tu tortilla',
-            'selection_type' => 'single',
-        ]);
-    }
-
-    public function test_admin_can_create_modifier_option(): void
-    {
-        [$user, $restaurant] = $this->createAdminWithRestaurant();
-        $group = ModifierGroup::factory()->create(['restaurant_id' => $restaurant->id]);
-
-        $response = $this->withoutVite()->actingAs($user)->post(route('modifiers.options.store', $group->id), [
-            'name' => 'Tortilla de maíz',
-            'price_adjustment' => 0,
-            'sort_order' => 0,
-        ]);
-
-        $response->assertRedirect();
-        $this->assertDatabaseHas('modifier_options', [
-            'modifier_group_id' => $group->id,
-            'name' => 'Tortilla de maíz',
-        ]);
-    }
-
-    public function test_modifier_group_can_be_shared_between_products(): void
+    public function test_admin_can_create_product_with_inline_modifier_groups(): void
     {
         [$user, $restaurant] = $this->createAdminWithRestaurant();
         $category = Category::factory()->create(['restaurant_id' => $restaurant->id]);
 
-        $product1 = Product::factory()->create([
+        $response = $this->withoutVite()->actingAs($user)->post(route('products.store'), [
+            'name' => 'Taco al Pastor',
+            'price' => 25.00,
+            'category_id' => $category->id,
+            'is_active' => true,
+            'sort_order' => 0,
+            'modifier_groups' => [
+                [
+                    'name' => 'Elige tu tortilla',
+                    'selection_type' => 'single',
+                    'is_required' => true,
+                    'options' => [
+                        ['name' => 'Maíz', 'price_adjustment' => 0, 'production_cost' => 1.50],
+                        ['name' => 'Harina', 'price_adjustment' => 5, 'production_cost' => 2.00],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect(route('menu.index'));
+
+        $product = Product::query()->where('name', 'Taco al Pastor')->first();
+        $this->assertNotNull($product);
+        $this->assertCount(1, $product->modifierGroups);
+
+        $group = $product->modifierGroups->first();
+        $this->assertEquals('Elige tu tortilla', $group->name);
+        $this->assertEquals('single', $group->selection_type);
+        $this->assertTrue($group->is_required);
+        $this->assertEquals($restaurant->id, $group->restaurant_id);
+        $this->assertCount(2, $group->options);
+        $this->assertEquals('1.50', $group->options->first()->production_cost);
+    }
+
+    public function test_admin_can_edit_product_modifier_groups(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $category = Category::factory()->create(['restaurant_id' => $restaurant->id]);
+        $product = Product::factory()->create([
             'restaurant_id' => $restaurant->id,
             'category_id' => $category->id,
         ]);
-        $product2 = Product::factory()->create([
+
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+            'name' => 'Extras',
+        ]);
+        $option = ModifierOption::factory()->create([
+            'modifier_group_id' => $group->id,
+            'name' => 'Queso',
+            'price_adjustment' => 10,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->put(route('products.update', $product->id), [
+            'name' => $product->name,
+            'price' => $product->price,
+            'category_id' => $category->id,
+            'modifier_groups' => [
+                [
+                    'id' => $group->id,
+                    'name' => 'Extras Actualizados',
+                    'selection_type' => 'multiple',
+                    'is_required' => false,
+                    'options' => [
+                        ['id' => $option->id, 'name' => 'Queso Extra', 'price_adjustment' => 15, 'production_cost' => 3],
+                        ['name' => 'Guacamole', 'price_adjustment' => 20, 'production_cost' => 5],
+                    ],
+                ],
+                [
+                    'name' => 'Nuevo Grupo',
+                    'selection_type' => 'single',
+                    'is_required' => true,
+                    'options' => [
+                        ['name' => 'Opción A', 'price_adjustment' => 0],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect(route('menu.index'));
+
+        $product->refresh();
+        $this->assertCount(2, $product->modifierGroups);
+
+        $updatedGroup = $product->modifierGroups->where('id', $group->id)->first();
+        $this->assertEquals('Extras Actualizados', $updatedGroup->name);
+        $this->assertCount(2, $updatedGroup->options);
+        $this->assertEquals('Queso Extra', $updatedGroup->options->where('id', $option->id)->first()->name);
+
+        $newGroup = $product->modifierGroups->where('name', 'Nuevo Grupo')->first();
+        $this->assertNotNull($newGroup);
+        $this->assertCount(1, $newGroup->options);
+    }
+
+    public function test_removing_modifier_groups_on_update_deletes_them(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $category = Category::factory()->create(['restaurant_id' => $restaurant->id]);
+        $product = Product::factory()->create([
             'restaurant_id' => $restaurant->id,
             'category_id' => $category->id,
         ]);
 
-        $group = ModifierGroup::factory()->create(['restaurant_id' => $restaurant->id]);
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+        ]);
+        ModifierOption::factory()->create(['modifier_group_id' => $group->id]);
 
-        $this->withoutVite()->actingAs($user)->put(route('products.update', $product1->id), [
-            'name' => $product1->name,
-            'price' => $product1->price,
+        $response = $this->withoutVite()->actingAs($user)->put(route('products.update', $product->id), [
+            'name' => $product->name,
+            'price' => $product->price,
             'category_id' => $category->id,
-            'modifier_group_ids' => [$group->id],
+            'modifier_groups' => [],
         ]);
 
-        $this->withoutVite()->actingAs($user)->put(route('products.update', $product2->id), [
-            'name' => $product2->name,
-            'price' => $product2->price,
-            'category_id' => $category->id,
-            'modifier_group_ids' => [$group->id],
-        ]);
-
-        $this->assertCount(1, $product1->fresh()->modifierGroups);
-        $this->assertCount(1, $product2->fresh()->modifierGroups);
-        $this->assertEquals($group->id, $product1->fresh()->modifierGroups->first()->id);
-        $this->assertEquals($group->id, $product2->fresh()->modifierGroups->first()->id);
+        $response->assertRedirect(route('menu.index'));
+        $this->assertDatabaseMissing('modifier_groups', ['id' => $group->id]);
     }
 
     public function test_admin_cannot_manage_products_from_another_restaurant(): void

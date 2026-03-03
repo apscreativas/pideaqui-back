@@ -6,25 +6,37 @@ import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
 const props = defineProps({
     restaurant: Object,
     admin: Object,
-    monthly_orders_count: Number,
+    orders_count: Number,
     branch_count: Number,
 })
 
 const editingLimits = ref(false)
 const showToken = ref(false)
+const showRegenerateModal = ref(false)
+const regenerating = ref(false)
 
 const limitsForm = useForm({
-    max_monthly_orders: props.restaurant.max_monthly_orders,
+    orders_limit: props.restaurant.orders_limit,
+    orders_limit_start: props.restaurant.orders_limit_start?.slice(0, 10) ?? '',
+    orders_limit_end: props.restaurant.orders_limit_end?.slice(0, 10) ?? '',
     max_branches: props.restaurant.max_branches,
 })
 
 const ordersPercent = computed(() =>
-    Math.min(100, Math.round((props.monthly_orders_count / props.restaurant.max_monthly_orders) * 100)),
+    Math.min(100, Math.round((props.orders_count / props.restaurant.orders_limit) * 100)),
 )
 
 const branchesPercent = computed(() =>
     Math.min(100, Math.round((props.branch_count / props.restaurant.max_branches) * 100)),
 )
+
+function formatDate(dateStr) {
+    if (!dateStr) { return '—' }
+    // Handle both ISO datetime ("2026-03-01T00:00:00.000000Z") and date-only ("2026-03-01")
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) { return '—' }
+    return date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
 
 function barClass(percent) {
     if (percent > 90) { return 'bg-red-500' }
@@ -44,6 +56,17 @@ function saveLimits() {
 
 function copyToken() {
     navigator.clipboard.writeText(props.restaurant.access_token)
+}
+
+function regenerateToken() {
+    regenerating.value = true
+    router.post(route('super.restaurants.regenerate-token', props.restaurant.id), {}, {
+        onFinish: () => {
+            regenerating.value = false
+            showRegenerateModal.value = false
+            showToken.value = false
+        },
+    })
 }
 </script>
 
@@ -85,15 +108,18 @@ function copyToken() {
             <!-- Left column -->
             <div class="col-span-2 space-y-6">
 
-                <!-- Uso del mes -->
+                <!-- Uso del periodo -->
                 <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                    <h2 class="text-base font-semibold text-gray-900 mb-5">Uso del mes</h2>
+                    <div class="flex items-center justify-between mb-5">
+                        <h2 class="text-base font-semibold text-gray-900">Uso del periodo</h2>
+                        <span class="text-xs text-gray-400">{{ formatDate(restaurant.orders_limit_start) }} — {{ formatDate(restaurant.orders_limit_end) }}</span>
+                    </div>
 
                     <div class="space-y-5">
                         <div>
                             <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-medium text-gray-700">Pedidos mensuales</span>
-                                <span class="text-sm font-bold text-gray-900">{{ monthly_orders_count }} / {{ restaurant.max_monthly_orders }}</span>
+                                <span class="text-sm font-medium text-gray-700">Pedidos del periodo</span>
+                                <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ restaurant.orders_limit }}</span>
                             </div>
                             <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                                 <div
@@ -131,28 +157,40 @@ function copyToken() {
                         >Editar</button>
                     </div>
 
-                    <div v-if="!editingLimits" class="grid grid-cols-2 gap-4">
-                        <div class="bg-gray-50 rounded-xl p-4">
-                            <p class="text-xs text-gray-500 mb-1">Pedidos mensuales máx.</p>
-                            <p class="text-2xl font-bold text-gray-900">{{ restaurant.max_monthly_orders }}</p>
+                    <div v-if="!editingLimits" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-gray-50 rounded-xl p-4">
+                                <p class="text-xs text-gray-500 mb-1">Límite de pedidos</p>
+                                <p class="text-2xl font-bold text-gray-900">{{ restaurant.orders_limit }}</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-xl p-4">
+                                <p class="text-xs text-gray-500 mb-1">Sucursales máx.</p>
+                                <p class="text-2xl font-bold text-gray-900">{{ restaurant.max_branches }}</p>
+                            </div>
                         </div>
-                        <div class="bg-gray-50 rounded-xl p-4">
-                            <p class="text-xs text-gray-500 mb-1">Sucursales máx.</p>
-                            <p class="text-2xl font-bold text-gray-900">{{ restaurant.max_branches }}</p>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-gray-50 rounded-xl p-4">
+                                <p class="text-xs text-gray-500 mb-1">Inicio del periodo</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ formatDate(restaurant.orders_limit_start) }}</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-xl p-4">
+                                <p class="text-xs text-gray-500 mb-1">Fin del periodo</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ formatDate(restaurant.orders_limit_end) }}</p>
+                            </div>
                         </div>
                     </div>
 
                     <form v-else @submit.prevent="saveLimits" class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Pedidos mensuales máx.</label>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Límite de pedidos</label>
                                 <input
-                                    v-model.number="limitsForm.max_monthly_orders"
+                                    v-model.number="limitsForm.orders_limit"
                                     type="number"
                                     min="1"
                                     class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
                                 />
-                                <p v-if="limitsForm.errors.max_monthly_orders" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.max_monthly_orders }}</p>
+                                <p v-if="limitsForm.errors.orders_limit" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit }}</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Sucursales máx.</label>
@@ -163,6 +201,26 @@ function copyToken() {
                                     class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
                                 />
                                 <p v-if="limitsForm.errors.max_branches" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.max_branches }}</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Inicio del periodo</label>
+                                <input
+                                    v-model="limitsForm.orders_limit_start"
+                                    type="date"
+                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                />
+                                <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Fin del periodo</label>
+                                <input
+                                    v-model="limitsForm.orders_limit_end"
+                                    type="date"
+                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                />
+                                <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
                             </div>
                         </div>
                         <div class="flex gap-3">
@@ -206,21 +264,28 @@ function copyToken() {
                     <div class="bg-gray-50 rounded-xl p-3 font-mono text-xs text-gray-700 break-all mb-3">
                         {{ showToken ? restaurant.access_token : '••••••••••••••••' }}
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 mb-2">
                         <button
                             @click="showToken = !showToken"
-                            class="flex-1 text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                            class="flex-1 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                         >
                             {{ showToken ? 'Ocultar' : 'Mostrar' }}
                         </button>
                         <button
                             @click="copyToken"
-                            class="flex-1 text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
+                            class="flex-1 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
                         >
                             <span class="material-symbols-outlined text-base">content_copy</span>
                             Copiar
                         </button>
                     </div>
+                    <button
+                        @click="showRegenerateModal = true"
+                        class="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
+                    >
+                        <span class="material-symbols-outlined text-base">refresh</span>
+                        Regenerar token
+                    </button>
                 </div>
 
                 <!-- Metadata -->
@@ -239,5 +304,43 @@ function copyToken() {
                 </div>
             </div>
         </div>
+        <!-- Regenerate Token Modal -->
+        <Teleport to="body">
+            <div
+                v-if="showRegenerateModal"
+                class="fixed inset-0 z-50 flex items-center justify-center"
+            >
+                <!-- Backdrop -->
+                <div class="absolute inset-0 bg-black/40" @click="showRegenerateModal = false"></div>
+                <!-- Modal -->
+                <div class="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-amber-600">warning</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-900">Regenerar token</h3>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-6">
+                        Esta acción generará un nuevo token de acceso. El token anterior dejará de funcionar inmediatamente y las integraciones activas perderán acceso. Esta acción no se puede deshacer.
+                    </p>
+                    <div class="flex gap-3 justify-end">
+                        <button
+                            @click="showRegenerateModal = false"
+                            class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            @click="regenerateToken"
+                            :disabled="regenerating"
+                            class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+                        >
+                            {{ regenerating ? 'Regenerando...' : 'Regenerar' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
     </SuperAdminLayout>
 </template>

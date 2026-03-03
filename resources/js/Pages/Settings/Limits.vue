@@ -5,19 +5,26 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import SettingsLayout from '@/Components/SettingsLayout.vue'
 
 const props = defineProps({
-    monthly_orders_count: Number,
-    max_monthly_orders: Number,
+    orders_count: Number,
+    orders_limit: Number,
+    orders_limit_start: String,
+    orders_limit_end: String,
     branch_count: Number,
     max_branches: Number,
 })
 
 const ordersPercent = computed(() =>
-    Math.min(100, Math.round((props.monthly_orders_count / props.max_monthly_orders) * 100)),
+    Math.min(100, Math.round((props.orders_count / props.orders_limit) * 100)),
 )
 
 const branchesPercent = computed(() =>
     Math.min(100, Math.round((props.branch_count / props.max_branches) * 100)),
 )
+
+function formatDate(dateStr) {
+    if (!dateStr) { return '—' }
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 function barClass(percent) {
     if (percent > 90) { return 'bg-red-500' }
@@ -49,14 +56,14 @@ function alertClass(percent) {
 
                 <div class="space-y-8">
 
-                    <!-- Pedidos mensuales -->
+                    <!-- Pedidos del periodo -->
                     <div>
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-gray-500">receipt_long</span>
-                                <span class="text-sm font-semibold text-gray-700">Pedidos mensuales</span>
+                                <span class="text-sm font-semibold text-gray-700">Pedidos del periodo</span>
                             </div>
-                            <span class="text-sm font-bold text-gray-900">{{ monthly_orders_count }} / {{ max_monthly_orders }}</span>
+                            <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ orders_limit }}</span>
                         </div>
                         <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                             <div
@@ -65,14 +72,14 @@ function alertClass(percent) {
                                 :style="{ width: ordersPercent + '%' }"
                             ></div>
                         </div>
-                        <p class="text-xs text-gray-400 mt-1">Se reinicia automáticamente el día 1 de cada mes.</p>
+                        <p class="text-xs text-gray-400 mt-1">Periodo: {{ formatDate(orders_limit_start) }} — {{ formatDate(orders_limit_end) }}</p>
                         <div
                             v-if="alertClass(ordersPercent)"
                             class="mt-3 px-4 py-3 rounded-xl border text-sm font-medium"
                             :class="alertClass(ordersPercent)"
                         >
-                            <span v-if="ordersPercent > 90">⚠️ Estás muy cerca del límite mensual. Contacta a soporte para ampliarlo.</span>
-                            <span v-else>Estás superando el 70% de tu límite mensual.</span>
+                            <span v-if="ordersPercent > 90">Estás muy cerca del límite de pedidos. Contacta a soporte para ampliarlo.</span>
+                            <span v-else>Estás superando el 70% de tu límite de pedidos.</span>
                         </div>
                     </div>
 

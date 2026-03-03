@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AdvanceOrderStatusRequest;
 use App\Models\Branch;
 use App\Models\Order;
-use App\Services\StatisticsService;
+use App\Services\LimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,7 @@ class OrderController extends Controller
         'on_the_way' => 'delivered',
     ];
 
-    public function __construct(private readonly StatisticsService $statistics) {}
+    public function __construct(private readonly LimitService $limitService) {}
 
     public function index(Request $request): Response
     {
@@ -28,9 +28,14 @@ class OrderController extends Controller
 
         $restaurantId = $request->user()->restaurant_id;
 
+        // Default to today when no date filters are provided
+        $dateFrom = $request->date_from ?? now()->toDateString();
+        $dateTo = $request->date_to ?? $dateFrom;
+
         $query = Order::with(['customer:id,name,phone', 'branch:id,name'])
             ->when($request->branch_id, fn ($q, $id) => $q->where('branch_id', $id))
-            ->when($request->date, fn ($q, $date) => $q->whereDate('created_at', $date))
+            ->whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo)
             ->latest();
 
         $orders = $query->get()->groupBy('status');
@@ -43,9 +48,13 @@ class OrderController extends Controller
                 'delivered' => $orders->get('delivered', collect())->values(),
             ],
             'branches' => Branch::all(['id', 'name']),
-            'filters' => $request->only(['branch_id', 'date']),
-            'monthly_count' => $this->statistics->monthlyCount($restaurantId),
-            'max_monthly_orders' => $request->user()->restaurant->max_monthly_orders,
+            'filters' => [
+                'branch_id' => $request->branch_id,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+            ],
+            'monthly_count' => $this->limitService->orderCountInPeriod($request->user()->restaurant),
+            'orders_limit' => $request->user()->restaurant->orders_limit,
         ]);
     }
 
@@ -73,10 +82,12 @@ class OrderController extends Controller
         return back()->with('success', 'Estatus actualizado.');
     }
 
-    public function newCount(): JsonResponse
+    public function newCount(Request $request): JsonResponse
     {
         return response()->json([
-            'count' => Order::where('status', 'received')->count(),
+            'count' => Order::where('restaurant_id', $request->user()->restaurant_id)
+                ->where('status', 'received')
+                ->count(),
         ]);
     }
 }

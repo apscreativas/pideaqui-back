@@ -20,8 +20,21 @@ class UpdatePaymentMethodRequest extends FormRequest
             'is_active' => ['required', 'boolean'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'account_holder' => ['nullable', 'string', 'max:255'],
-            'clabe' => ['nullable', 'string', 'size:18'],
+            'clabe' => ['nullable', 'string', 'regex:/^\d{16}(\d{2})?$/'],
             'alias' => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'is_active.required' => 'El estado es obligatorio.',
+            'is_active.boolean' => 'El estado debe ser activo o inactivo.',
+            'bank_name.max' => 'El nombre del banco no puede exceder 255 caracteres.',
+            'account_holder.max' => 'El titular no puede exceder 255 caracteres.',
+            'clabe.regex' => 'La CLABE debe tener 16 o 18 dígitos numéricos.',
+            'alias.max' => 'El alias no puede exceder 255 caracteres.',
         ];
     }
 
@@ -52,7 +65,7 @@ class UpdatePaymentMethodRequest extends FormRequest
                         ->count();
 
                     if ($otherActiveCount === 0) {
-                        $validator->errors()->add('is_active', 'Debe haber al menos un metodo de pago activo.');
+                        $validator->errors()->add('is_active', 'Debe haber al menos un método de pago activo.');
                     }
                 }
             },

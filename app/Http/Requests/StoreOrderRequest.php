@@ -18,7 +18,7 @@ class StoreOrderRequest extends FormRequest
             'customer' => ['required', 'array'],
             'customer.token' => ['required', 'string', 'max:255'],
             'customer.name' => ['required', 'string', 'max:255'],
-            'customer.phone' => ['required', 'string', 'max:30'],
+            'customer.phone' => ['required', 'string', 'regex:/^\d{10}$/'],
 
             'delivery_type' => ['required', 'in:delivery,pickup,dine_in'],
             'branch_id' => ['required', 'integer', 'min:1'],
@@ -30,17 +30,25 @@ class StoreOrderRequest extends FormRequest
             'distance_km' => ['nullable', 'required_if:delivery_type,delivery', 'numeric', 'min:0'],
             'delivery_cost' => ['nullable', 'required_if:delivery_type,delivery', 'numeric', 'min:0'],
 
-            'scheduled_at' => ['nullable', 'date'],
+            'scheduled_at' => ['nullable', 'date', 'after:now'],
             'payment_method' => ['required', 'in:cash,terminal,transfer'],
 
-            'items' => ['required', 'array', 'min:1'],
+            'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.product_id' => ['required', 'integer', 'min:1'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+            'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:99999.99'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
-            'items.*.modifiers' => ['nullable', 'array'],
-            'items.*.modifiers.*.modifier_option_id' => ['required', 'integer', 'min:1'],
-            'items.*.modifiers.*.price_adjustment' => ['required', 'numeric'],
+            'items.*.modifiers' => ['nullable', 'array', 'max:20'],
+            'items.*.modifiers.*.modifier_option_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.modifiers.*.price_adjustment' => ['required', 'numeric', 'min:0', 'max:99999.99'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'customer.phone.regex' => 'El teléfono debe ser de exactamente 10 dígitos numéricos.',
         ];
     }
 }

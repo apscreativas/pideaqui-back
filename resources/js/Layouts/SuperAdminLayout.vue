@@ -25,18 +25,18 @@ function logout() {
     <div class="min-h-screen bg-[#FAFAFA] flex">
 
         <!-- Sidebar -->
-        <aside class="fixed top-0 left-0 h-full w-[260px] bg-gray-900 flex flex-col z-30">
+        <aside class="fixed top-0 left-0 h-full w-[260px] bg-white border-r border-gray-100 flex flex-col z-30">
 
             <!-- Logo -->
-            <div class="px-6 py-5 border-b border-gray-700">
+            <div class="px-6 py-5 border-b border-gray-100">
                 <div class="flex items-center gap-3">
-                    <div class="bg-[#FF5722]/20 p-2 rounded-xl">
+                    <div class="bg-orange-50 p-2 rounded-xl">
                         <span class="material-symbols-outlined text-[#FF5722] text-2xl" style="font-variation-settings:'FILL' 1">
                             local_fire_department
                         </span>
                     </div>
                     <div>
-                        <p class="font-bold text-white text-sm leading-tight">GuisoGo</p>
+                        <p class="font-bold text-gray-900 text-sm leading-tight">GuisoGo</p>
                         <p class="text-xs text-gray-400">SuperAdmin</p>
                     </div>
                 </div>
@@ -49,8 +49,8 @@ function logout() {
                         :href="route(item.route)"
                         class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
                         :class="isActive(item.route)
-                            ? 'bg-[#FF5722]/20 text-[#FF5722]'
-                            : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+                            ? 'bg-[#FF5722]/10 text-[#FF5722]'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
                     >
                         <span
                             class="material-symbols-outlined text-xl"
@@ -62,10 +62,10 @@ function logout() {
             </nav>
 
             <!-- Logout -->
-            <div class="px-4 py-4 border-t border-gray-700">
+            <div class="px-4 py-4 border-t border-gray-100">
                 <button
                     @click="logout"
-                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-colors w-full"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors w-full"
                 >
                     <span class="material-symbols-outlined text-xl">logout</span>
                     <span>Cerrar sesión</span>

@@ -5,10 +5,11 @@ import SettingsLayout from '@/Components/SettingsLayout.vue'
 
 const props = defineProps({
     restaurant: Object,
+    has_delivery_ranges: Boolean,
 })
 
 const form = useForm({
-    allows_delivery: props.restaurant.allows_delivery ?? true,
+    allows_delivery: props.has_delivery_ranges ? (props.restaurant.allows_delivery ?? true) : false,
     allows_pickup: props.restaurant.allows_pickup ?? true,
     allows_dine_in: props.restaurant.allows_dine_in ?? false,
 })
@@ -65,13 +66,24 @@ const METHODS = [
                             <div>
                                 <p class="text-sm font-semibold text-gray-800">{{ method.label }}</p>
                                 <p class="text-xs text-gray-500 mt-0.5">{{ method.description }}</p>
+                                <p
+                                    v-if="method.key === 'allows_delivery' && !has_delivery_ranges"
+                                    class="text-xs text-amber-600 mt-1 flex items-center gap-1"
+                                >
+                                    <span class="material-symbols-outlined text-sm" aria-hidden="true">warning</span>
+                                    Configura al menos una tarifa de envío para activar esta opción.
+                                </p>
                             </div>
                         </div>
                         <!-- Toggle -->
                         <button
                             type="button"
-                            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                            :class="form[method.key] ? 'bg-[#FF5722]' : 'bg-gray-200'"
+                            class="relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                            :class="[
+                                form[method.key] ? 'bg-[#FF5722]' : 'bg-gray-200',
+                                method.key === 'allows_delivery' && !has_delivery_ranges ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+                            ]"
+                            :disabled="method.key === 'allows_delivery' && !has_delivery_ranges"
                             @click="form[method.key] = !form[method.key]"
                         >
                             <span

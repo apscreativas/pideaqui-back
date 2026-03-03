@@ -16,7 +16,7 @@ class DashboardTest extends TestCase
 
     private function createAdminWithRestaurant(): array
     {
-        $restaurant = Restaurant::factory()->create(['max_monthly_orders' => 500]);
+        $restaurant = Restaurant::factory()->create(['orders_limit' => 500]);
         $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
 
         return [$user, $restaurant];
@@ -44,7 +44,7 @@ class DashboardTest extends TestCase
             ->has('yesterday_orders_count')
             ->has('preparing_orders_count')
             ->has('monthly_orders_count')
-            ->has('max_monthly_orders')
+            ->has('orders_limit')
             ->has('net_profit_month')
             ->has('orders_by_branch')
             ->has('recent_orders')

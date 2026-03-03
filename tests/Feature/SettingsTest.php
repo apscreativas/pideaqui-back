@@ -17,7 +17,7 @@ class SettingsTest extends TestCase
 
     private function createAdminWithRestaurant(): array
     {
-        $restaurant = Restaurant::factory()->create(['max_monthly_orders' => 500, 'max_branches' => 3]);
+        $restaurant = Restaurant::factory()->create(['orders_limit' => 500, 'max_branches' => 3]);
         $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
 
         return [$user, $restaurant];
@@ -87,6 +87,9 @@ class SettingsTest extends TestCase
     {
         [$user, $restaurant] = $this->createAdminWithRestaurant();
 
+        // Delivery requires at least one delivery range
+        DeliveryRange::factory()->create(['restaurant_id' => $restaurant->id]);
+
         $this->actingAs($user)->put(route('settings.delivery-methods.update'), [
             'allows_delivery' => true,
             'allows_pickup' => false,
@@ -107,6 +110,19 @@ class SettingsTest extends TestCase
 
         $response = $this->actingAs($user)->put(route('settings.delivery-methods.update'), [
             'allows_delivery' => false,
+            'allows_pickup' => false,
+            'allows_dine_in' => false,
+        ]);
+
+        $response->assertSessionHasErrors('allows_delivery');
+    }
+
+    public function test_cannot_activate_delivery_without_delivery_ranges(): void
+    {
+        [$user] = $this->createAdminWithRestaurant();
+
+        $response = $this->actingAs($user)->put(route('settings.delivery-methods.update'), [
+            'allows_delivery' => true,
             'allows_pickup' => false,
             'allows_dine_in' => false,
         ]);
@@ -182,6 +198,89 @@ class SettingsTest extends TestCase
         $response->assertSessionHasErrors('max_km');
     }
 
+    public function test_overlapping_delivery_range_is_rejected(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        // Create existing range: 0-5 km
+        DeliveryRange::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'min_km' => 0,
+            'max_km' => 5,
+        ]);
+
+        // Try to create 0-1 km (fully inside existing)
+        $response = $this->actingAs($user)->post(route('settings.shipping-rates.store'), [
+            'min_km' => 0,
+            'max_km' => 1,
+            'price' => 20,
+        ]);
+
+        $response->assertSessionHasErrors('min_km');
+    }
+
+    public function test_partially_overlapping_delivery_range_is_rejected(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        DeliveryRange::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'min_km' => 0,
+            'max_km' => 5,
+        ]);
+
+        // Try to create 3-8 km (partial overlap)
+        $response = $this->actingAs($user)->post(route('settings.shipping-rates.store'), [
+            'min_km' => 3,
+            'max_km' => 8,
+            'price' => 50,
+        ]);
+
+        $response->assertSessionHasErrors('min_km');
+    }
+
+    public function test_non_overlapping_delivery_range_is_allowed(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        DeliveryRange::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'min_km' => 0,
+            'max_km' => 5,
+        ]);
+
+        // 5-10 km: no overlap (starts where the other ends)
+        $response = $this->actingAs($user)->post(route('settings.shipping-rates.store'), [
+            'min_km' => 5,
+            'max_km' => 10,
+            'price' => 50,
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+    }
+
+    public function test_update_delivery_range_does_not_conflict_with_itself(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $range = DeliveryRange::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'min_km' => 0,
+            'max_km' => 5,
+        ]);
+
+        // Updating the same range to 0-6 should work (no self-conflict)
+        $response = $this->actingAs($user)->put(route('settings.shipping-rates.update', $range), [
+            'min_km' => 0,
+            'max_km' => 6,
+            'price' => 35,
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+    }
+
     // ─── Payment Methods ───────────────────────────────────────────────────────
 
     public function test_admin_can_view_payment_methods(): void
@@ -250,18 +349,6 @@ class SettingsTest extends TestCase
         $response->assertStatus(404);
     }
 
-    // ─── QR Code ───────────────────────────────────────────────────────────────
-
-    public function test_admin_can_view_qr_code_page(): void
-    {
-        [$user] = $this->createAdminWithRestaurant();
-
-        $response = $this->withoutVite()->actingAs($user)->get(route('settings.qr-code'));
-
-        $response->assertStatus(200);
-        $response->assertInertia(fn ($page) => $page->component('Settings/QrCode'));
-    }
-
     // ─── Profile ───────────────────────────────────────────────────────────────
 
     public function test_admin_can_view_profile(): void
@@ -312,8 +399,8 @@ class SettingsTest extends TestCase
         $response->assertStatus(200);
         $response->assertInertia(fn ($page) => $page
             ->component('Settings/Limits')
-            ->has('monthly_orders_count')
-            ->has('max_monthly_orders')
+            ->has('orders_count')
+            ->has('orders_limit')
             ->has('branch_count')
             ->has('max_branches')
         );

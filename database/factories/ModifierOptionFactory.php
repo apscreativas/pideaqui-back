@@ -19,6 +19,7 @@ class ModifierOptionFactory extends Factory
             'modifier_group_id' => ModifierGroup::factory(),
             'name' => fake()->words(2, true),
             'price_adjustment' => fake()->randomFloat(2, 0, 50),
+            'production_cost' => 0,
             'sort_order' => fake()->numberBetween(0, 10),
         ];
     }

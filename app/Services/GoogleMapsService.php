@@ -37,6 +37,13 @@ class GoogleMapsService
 
         return collect($json['rows'][0]['elements'])
             ->map(function (array $element): array {
+                if (($element['status'] ?? '') !== 'OK') {
+                    return [
+                        'distance_km' => PHP_FLOAT_MAX,
+                        'duration_minutes' => 0,
+                    ];
+                }
+
                 return [
                     'distance_km' => $element['distance']['value'] / 1000,
                     'duration_minutes' => (int) round($element['duration']['value'] / 60),

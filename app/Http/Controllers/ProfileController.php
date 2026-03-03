@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\UpdateProfileRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,9 +22,7 @@ class ProfileController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        if (isset($data['password'])) {
-            $data['password'] = Hash::make($data['password']);
-        } else {
+        if (! isset($data['password']) || $data['password'] === null) {
             unset($data['password']);
         }
 

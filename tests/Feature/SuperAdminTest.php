@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Order;
-use App\Models\PaymentMethod;
 use App\Models\Restaurant;
 use App\Models\SuperAdmin;
 use App\Models\User;
@@ -154,7 +153,9 @@ class SuperAdminTest extends TestCase
             'admin_email' => 'carlos@tacosrey.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-            'max_monthly_orders' => 300,
+            'orders_limit' => 300,
+            'orders_limit_start' => now()->startOfMonth()->toDateString(),
+            'orders_limit_end' => now()->endOfMonth()->toDateString(),
             'max_branches' => 2,
         ]);
 
@@ -164,7 +165,7 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseHas('restaurants', [
             'name' => 'Tacos El Rey',
             'slug' => 'tacos-el-rey',
-            'max_monthly_orders' => 300,
+            'orders_limit' => 300,
             'max_branches' => 2,
             'is_active' => true,
         ]);
@@ -177,9 +178,9 @@ class SuperAdminTest extends TestCase
             'restaurant_id' => $restaurant->id,
         ]);
 
-        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'cash']);
-        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'terminal']);
-        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'transfer']);
+        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'cash', 'is_active' => true]);
+        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'terminal', 'is_active' => false]);
+        $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'transfer', 'is_active' => false]);
     }
 
     public function test_create_restaurant_fails_with_duplicate_slug(): void
@@ -194,7 +195,9 @@ class SuperAdminTest extends TestCase
             'admin_email' => 'admin@test.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-            'max_monthly_orders' => 500,
+            'orders_limit' => 500,
+            'orders_limit_start' => now()->startOfMonth()->toDateString(),
+            'orders_limit_end' => now()->endOfMonth()->toDateString(),
             'max_branches' => 3,
         ]);
 
@@ -214,7 +217,9 @@ class SuperAdminTest extends TestCase
             'admin_email' => 'taken@test.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-            'max_monthly_orders' => 500,
+            'orders_limit' => 500,
+            'orders_limit_start' => now()->startOfMonth()->toDateString(),
+            'orders_limit_end' => now()->endOfMonth()->toDateString(),
             'max_branches' => 3,
         ]);
 
@@ -234,7 +239,7 @@ class SuperAdminTest extends TestCase
         $response->assertStatus(200);
         $response->assertInertia(fn ($page) => $page
             ->component('SuperAdmin/Restaurants/Show')
-            ->has('monthly_orders_count')
+            ->has('orders_count')
             ->has('branch_count')
         );
     }
@@ -244,29 +249,31 @@ class SuperAdminTest extends TestCase
     public function test_superadmin_can_update_restaurant_limits(): void
     {
         $superAdmin = $this->createSuperAdmin();
-        $restaurant = Restaurant::factory()->create(['max_monthly_orders' => 500, 'max_branches' => 3]);
+        $restaurant = Restaurant::factory()->create(['orders_limit' => 500, 'max_branches' => 3]);
 
         $response = $this->actingAs($superAdmin, 'superadmin')
             ->put(route('super.restaurants.update-limits', $restaurant), [
-                'max_monthly_orders' => 1000,
+                'orders_limit' => 1000,
+                'orders_limit_start' => now()->startOfMonth()->toDateString(),
+                'orders_limit_end' => now()->endOfMonth()->toDateString(),
                 'max_branches' => 5,
             ]);
 
         $response->assertRedirect();
         $this->assertDatabaseHas('restaurants', [
             'id' => $restaurant->id,
-            'max_monthly_orders' => 1000,
+            'orders_limit' => 1000,
             'max_branches' => 5,
         ]);
     }
 
-    public function test_cannot_set_limits_below_current_monthly_orders(): void
+    public function test_cannot_set_limits_below_current_period_orders(): void
     {
         $superAdmin = $this->createSuperAdmin();
-        $restaurant = Restaurant::factory()->create(['max_monthly_orders' => 500]);
+        $restaurant = Restaurant::factory()->create(['orders_limit' => 500]);
         $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
 
-        // Create 10 orders this month
+        // Create 10 orders within the period
         Order::factory()->count(10)->create([
             'restaurant_id' => $restaurant->id,
             'branch_id' => Branch::factory()->create(['restaurant_id' => $restaurant->id])->id,
@@ -274,11 +281,30 @@ class SuperAdminTest extends TestCase
 
         $response = $this->actingAs($superAdmin, 'superadmin')
             ->put(route('super.restaurants.update-limits', $restaurant), [
-                'max_monthly_orders' => 5,
+                'orders_limit' => 5,
+                'orders_limit_start' => now()->startOfMonth()->toDateString(),
+                'orders_limit_end' => now()->endOfMonth()->toDateString(),
                 'max_branches' => 3,
             ]);
 
-        $response->assertSessionHasErrors('max_monthly_orders');
+        $response->assertSessionHasErrors('orders_limit');
+    }
+
+    // ─── Regenerate Token ──────────────────────────────────────────────────────
+
+    public function test_superadmin_can_regenerate_restaurant_token(): void
+    {
+        $superAdmin = $this->createSuperAdmin();
+        $restaurant = Restaurant::factory()->create();
+        $oldToken = $restaurant->access_token;
+
+        $response = $this->actingAs($superAdmin, 'superadmin')
+            ->post(route('super.restaurants.regenerate-token', $restaurant));
+
+        $response->assertRedirect();
+        $restaurant->refresh();
+        $this->assertNotEquals($oldToken, $restaurant->access_token);
+        $this->assertEquals(64, strlen($restaurant->access_token));
     }
 
     // ─── Toggle Active ──────────────────────────────────────────────────────────

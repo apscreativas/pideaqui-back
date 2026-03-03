@@ -18,6 +18,10 @@ class DeliveryController extends Controller
         /** @var Restaurant $restaurant */
         $restaurant = $request->attributes->get('restaurant');
 
+        if (! $restaurant->allows_delivery) {
+            return response()->json(['message' => 'Este restaurante no ofrece servicio a domicilio.'], 422);
+        }
+
         try {
             $result = $this->deliveryService->calculate(
                 clientLat: (float) $request->validated('latitude'),

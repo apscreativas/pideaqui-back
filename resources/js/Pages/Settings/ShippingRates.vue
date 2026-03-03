@@ -145,8 +145,8 @@ function formatPrice(value) {
                 <!-- Add range form -->
                 <div class="border-t border-gray-100 pt-6">
                     <h3 class="text-sm font-semibold text-gray-700 mb-4">Agregar rango</h3>
-                    <form @submit.prevent="addRange" class="flex flex-wrap items-end gap-4">
-                        <div>
+                    <form @submit.prevent="addRange" class="flex flex-wrap items-start gap-4">
+                        <div class="relative pb-5">
                             <label class="block text-xs text-gray-500 mb-1">Desde (km)</label>
                             <input
                                 v-model="addForm.min_km"
@@ -154,11 +154,12 @@ function formatPrice(value) {
                                 step="0.01"
                                 min="0"
                                 placeholder="0"
-                                class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                class="w-28 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                :class="addForm.errors.min_km ? 'border-red-300' : 'border-gray-200'"
                             />
-                            <p v-if="addForm.errors.min_km" class="text-xs text-red-500 mt-1">{{ addForm.errors.min_km }}</p>
+                            <p v-if="addForm.errors.min_km" class="absolute bottom-0 left-0 text-xs text-red-500 truncate max-w-[7rem]" :title="addForm.errors.min_km">{{ addForm.errors.min_km }}</p>
                         </div>
-                        <div>
+                        <div class="relative pb-5">
                             <label class="block text-xs text-gray-500 mb-1">Hasta (km)</label>
                             <input
                                 v-model="addForm.max_km"
@@ -166,11 +167,12 @@ function formatPrice(value) {
                                 step="0.01"
                                 min="0"
                                 placeholder="5"
-                                class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                class="w-28 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                :class="addForm.errors.max_km ? 'border-red-300' : 'border-gray-200'"
                             />
-                            <p v-if="addForm.errors.max_km" class="text-xs text-red-500 mt-1">{{ addForm.errors.max_km }}</p>
+                            <p v-if="addForm.errors.max_km" class="absolute bottom-0 left-0 text-xs text-red-500 truncate max-w-[7rem]" :title="addForm.errors.max_km">{{ addForm.errors.max_km }}</p>
                         </div>
-                        <div>
+                        <div class="relative pb-5">
                             <label class="block text-xs text-gray-500 mb-1">Precio ($)</label>
                             <input
                                 v-model="addForm.price"
@@ -178,18 +180,21 @@ function formatPrice(value) {
                                 step="0.01"
                                 min="0"
                                 placeholder="30"
-                                class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                class="w-28 border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                :class="addForm.errors.price ? 'border-red-300' : 'border-gray-200'"
                             />
-                            <p v-if="addForm.errors.price" class="text-xs text-red-500 mt-1">{{ addForm.errors.price }}</p>
+                            <p v-if="addForm.errors.price" class="absolute bottom-0 left-0 text-xs text-red-500 truncate max-w-[7rem]" :title="addForm.errors.price">{{ addForm.errors.price }}</p>
                         </div>
-                        <button
-                            type="submit"
-                            :disabled="addForm.processing"
-                            class="flex items-center gap-2 bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors disabled:opacity-60"
-                        >
-                            <span class="material-symbols-outlined text-lg">add</span>
-                            Agregar
-                        </button>
+                        <div class="pt-5">
+                            <button
+                                type="submit"
+                                :disabled="addForm.processing"
+                                class="flex items-center gap-2 bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors disabled:opacity-60"
+                            >
+                                <span class="material-symbols-outlined text-lg">add</span>
+                                Agregar
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>

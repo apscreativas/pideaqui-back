@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\DeliveryRange;
 use App\Models\ModifierGroup;
 use App\Models\ModifierOption;
 use App\Models\Order;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,11 +22,21 @@ class OrderApiTest extends TestCase
 
     private function restaurant(array $attrs = []): Restaurant
     {
-        return Restaurant::factory()->create(array_merge([
+        $restaurant = Restaurant::factory()->create(array_merge([
             'access_token' => 'test-order-token',
             'is_active' => true,
-            'max_monthly_orders' => 100,
+            'orders_limit' => 100,
+            'allows_delivery' => true,
+            'allows_pickup' => true,
+            'allows_dine_in' => true,
         ], $attrs));
+
+        PaymentMethod::factory()->cash()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+
+        return $restaurant;
     }
 
     private function authHeaders(Restaurant $restaurant): array
@@ -41,6 +53,16 @@ class OrderApiTest extends TestCase
         ]);
     }
 
+    private function withDeliveryRange(Restaurant $restaurant, float $minKm = 0, float $maxKm = 10, float $price = 30.00): DeliveryRange
+    {
+        return DeliveryRange::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'min_km' => $minKm,
+            'max_km' => $maxKm,
+            'price' => $price,
+        ]);
+    }
+
     private function product(Restaurant $restaurant, float $price = 25.00): Product
     {
         return Product::factory()->create([
@@ -54,7 +76,7 @@ class OrderApiTest extends TestCase
     private function deliveryPayload(Branch $branch, Product $product, array $overrides = []): array
     {
         return array_merge([
-            'customer' => ['token' => 'uuid-test-001', 'name' => 'María García', 'phone' => '+5215598765432'],
+            'customer' => ['token' => 'uuid-test-001', 'name' => 'María García', 'phone' => '5598765432'],
             'delivery_type' => 'delivery',
             'branch_id' => $branch->id,
             'address' => 'Calle Morelos 45, Col. Roma Norte',
@@ -112,6 +134,7 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
 
         $response = $this->postJson(
             '/api/orders',
@@ -129,6 +152,7 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
 
         $this->postJson(
             '/api/orders',
@@ -150,16 +174,17 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);  // 2 units × $25 = $50
+        $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         $this->postJson(
             '/api/orders',
-            $this->deliveryPayload($branch, $product),  // delivery_cost = $30
+            $this->deliveryPayload($branch, $product),
             $this->authHeaders($restaurant),
         )->assertCreated();
 
         $order = Order::latest()->first();
         $this->assertEquals('50.00', $order->subtotal);
-        $this->assertEquals('30.00', $order->delivery_cost);
+        $this->assertEquals('30.00', $order->delivery_cost);  // from delivery range, not client
         $this->assertEquals('80.00', $order->total);
     }
 
@@ -168,9 +193,12 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
-        $group = ModifierGroup::factory()->create(['restaurant_id' => $restaurant->id]);
-        $product->modifierGroups()->attach($group);
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+        ]);
         $option = ModifierOption::factory()->create([
             'modifier_group_id' => $group->id,
             'price_adjustment' => 15.00,
@@ -218,6 +246,7 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
 
         $this->postJson('/api/orders',
             $this->deliveryPayload($branch, $product, [
@@ -235,6 +264,7 @@ class OrderApiTest extends TestCase
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
         $product->update(['name' => 'Taco de Bistec']);
+        $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         $response = $this->postJson(
             '/api/orders',
@@ -254,6 +284,7 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
 
         $response = $this->postJson('/api/orders',
             $this->deliveryPayload($branch, $product),
@@ -267,10 +298,11 @@ class OrderApiTest extends TestCase
 
     public function test_monthly_limit_reached_returns_422(): void
     {
-        $restaurant = $this->restaurant(['max_monthly_orders' => 1]);
+        $restaurant = $this->restaurant(['orders_limit' => 1]);
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant);
         $customer = Customer::factory()->create();
+        $this->withDeliveryRange($restaurant);
 
         // Create 1 order to hit the limit.
         Order::factory()->create([
@@ -293,9 +325,28 @@ class OrderApiTest extends TestCase
         $otherRestaurant = Restaurant::factory()->create(['is_active' => true]);
         $foreignBranch = $this->branch($otherRestaurant);
         $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
 
         $this->postJson('/api/orders',
             $this->deliveryPayload($foreignBranch, $product),
+            $this->authHeaders($restaurant),
+        )->assertUnprocessable()
+            ->assertJsonValidationErrors(['branch_id']);
+    }
+
+    public function test_inactive_branch_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'whatsapp' => '+5215512345678',
+            'is_active' => false,
+        ]);
+        $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product),
             $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['branch_id']);
@@ -310,6 +361,7 @@ class OrderApiTest extends TestCase
             'price' => 25.00,
             'is_active' => false,
         ]);
+        $this->withDeliveryRange($restaurant);
 
         $this->postJson('/api/orders',
             $this->deliveryPayload($branch, $product),
@@ -318,11 +370,73 @@ class OrderApiTest extends TestCase
             ->assertJsonValidationErrors(['items']);
     }
 
+    public function test_delivery_without_matching_range_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        // Range only covers 0-2 km, but distance_km is 3.2
+        $this->withDeliveryRange($restaurant, 0, 2, 30.00);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product),
+            $this->authHeaders($restaurant),
+        )->assertUnprocessable()
+            ->assertJsonValidationErrors(['delivery_cost']);
+    }
+
+    public function test_delivery_cost_is_calculated_from_range_not_client(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        // Range price is $50, but client sends $30
+        $this->withDeliveryRange($restaurant, 0, 10, 50.00);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product, ['delivery_cost' => 30.00]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $order = Order::latest()->first();
+        $this->assertEquals('50.00', $order->delivery_cost);  // server-side from range
+        $this->assertEquals('100.00', $order->total);  // 50 subtotal + 50 delivery
+    }
+
+    public function test_required_modifier_group_must_have_selection(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+            'is_required' => true,
+        ]);
+        ModifierOption::factory()->create([
+            'modifier_group_id' => $group->id,
+            'price_adjustment' => 5.00,
+        ]);
+
+        // Send order with no modifiers — should fail because group is required.
+        $this->postJson('/api/orders', [
+            'customer' => ['token' => 'uuid-test-req', 'name' => 'Test', 'phone' => '5512345678'],
+            'delivery_type' => 'pickup',
+            'branch_id' => $branch->id,
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
+        ], $this->authHeaders($restaurant))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['items']);
+    }
+
     public function test_price_tampering_returns_422(): void
     {
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
 
         $payload = $this->deliveryPayload($branch, $product, [
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 1.00, 'modifiers' => []]],
@@ -338,9 +452,12 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
 
-        $group = ModifierGroup::factory()->create(['restaurant_id' => $restaurant->id]);
-        $product->modifierGroups()->attach($group);
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+        ]);
         $option = ModifierOption::factory()->create([
             'modifier_group_id' => $group->id,
             'price_adjustment' => 15.00,
@@ -366,8 +483,13 @@ class OrderApiTest extends TestCase
         $otherRestaurant = Restaurant::factory()->create(['is_active' => true]);
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
 
-        $foreignGroup = ModifierGroup::factory()->create(['restaurant_id' => $otherRestaurant->id]);
+        $otherProduct = $this->product($otherRestaurant);
+        $foreignGroup = ModifierGroup::factory()->create([
+            'restaurant_id' => $otherRestaurant->id,
+            'product_id' => $otherProduct->id,
+        ]);
         $foreignOption = ModifierOption::factory()->create([
             'modifier_group_id' => $foreignGroup->id,
             'price_adjustment' => 0.00,
@@ -383,6 +505,113 @@ class OrderApiTest extends TestCase
         ]);
 
         $this->postJson('/api/orders', $payload, $this->authHeaders($restaurant))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['items']);
+    }
+
+    // ─── Delivery type & payment method validation ───────────────────────────
+
+    public function test_delivery_type_not_allowed_by_restaurant_returns_422(): void
+    {
+        $restaurant = $this->restaurant(['allows_delivery' => false]);
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product),
+            $this->authHeaders($restaurant),
+        )->assertUnprocessable()
+            ->assertJsonValidationErrors(['delivery_type']);
+    }
+
+    public function test_inactive_payment_method_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant);
+
+        // default restaurant() creates cash as active, use terminal which doesn't exist
+        $this->postJson('/api/orders', [
+            'customer' => ['token' => 'uuid-pm', 'name' => 'Test', 'phone' => '5512345678'],
+            'delivery_type' => 'pickup',
+            'branch_id' => $branch->id,
+            'payment_method' => 'terminal',
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
+        ], $this->authHeaders($restaurant))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['payment_method']);
+    }
+
+    // ─── Medium severity: duplicate modifiers & cross-product ────────────────
+
+    public function test_duplicate_modifier_option_in_item_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+            'selection_type' => 'multiple',
+        ]);
+        $option = ModifierOption::factory()->create([
+            'modifier_group_id' => $group->id,
+            'price_adjustment' => 5.00,
+        ]);
+
+        // Send the same option twice in one item — should be rejected.
+        $this->postJson('/api/orders', [
+            'customer' => ['token' => 'uuid-dup', 'name' => 'Test', 'phone' => '5512345678'],
+            'delivery_type' => 'pickup',
+            'branch_id' => $branch->id,
+            'payment_method' => 'cash',
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => $product->price,
+                'modifiers' => [
+                    ['modifier_option_id' => $option->id, 'price_adjustment' => 5.00],
+                    ['modifier_option_id' => $option->id, 'price_adjustment' => 5.00],
+                ],
+            ]],
+        ], $this->authHeaders($restaurant))
+            ->assertUnprocessable();
+    }
+
+    public function test_cross_product_modifier_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $productA = $this->product($restaurant, 25.00);
+        $productB = $this->product($restaurant, 30.00);
+
+        // Modifier belongs to product A.
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $productA->id,
+        ]);
+        $option = ModifierOption::factory()->create([
+            'modifier_group_id' => $group->id,
+            'price_adjustment' => 5.00,
+        ]);
+
+        // Send product A's modifier on product B — should be rejected.
+        $this->postJson('/api/orders', [
+            'customer' => ['token' => 'uuid-cross', 'name' => 'Test', 'phone' => '5512345678'],
+            'delivery_type' => 'pickup',
+            'branch_id' => $branch->id,
+            'payment_method' => 'cash',
+            'items' => [[
+                'product_id' => $productB->id,
+                'quantity' => 1,
+                'unit_price' => $productB->price,
+                'modifiers' => [
+                    ['modifier_option_id' => $option->id, 'price_adjustment' => 5.00],
+                ],
+            ]],
+        ], $this->authHeaders($restaurant))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }

@@ -2,20 +2,15 @@
 
 namespace App\Http\Resources;
 
+use App\Services\LimitService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class RestaurantResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $startOfMonth = Carbon::now()->startOfMonth();
-        $monthlyOrderCount = $this->orders()
-            ->where('created_at', '>=', $startOfMonth)
-            ->count();
-
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -36,7 +31,9 @@ class RestaurantResource extends JsonResource
             'allows_pickup' => (bool) $this->allows_pickup,
             'allows_dine_in' => (bool) $this->allows_dine_in,
             'branches' => BranchResource::collection($this->whenLoaded('branches')),
-            'monthly_orders_reached' => $monthlyOrderCount >= $this->max_monthly_orders,
+            'schedules' => RestaurantScheduleResource::collection($this->whenLoaded('schedules')),
+            'is_open' => $this->isCurrentlyOpen(),
+            'orders_limit_reached' => app(LimitService::class)->isOrderLimitReached($this->resource),
         ];
     }
 }

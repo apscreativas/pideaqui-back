@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBranchRequest;
 use App\Http\Requests\UpdateBranchRequest;
 use App\Models\Branch;
-use App\Models\BranchSchedule;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,7 +16,7 @@ class BranchController extends Controller
     {
         $this->authorize('viewAny', Branch::class);
 
-        $branches = Branch::with('schedules')
+        $branches = Branch::query()
             ->orderBy('name')
             ->get();
 
@@ -50,18 +49,7 @@ class BranchController extends Controller
         $data['restaurant_id'] = $restaurant->id;
         $data['is_active'] = $data['is_active'] ?? true;
 
-        $branch = Branch::query()->create($data);
-
-        // Create default 7 schedules
-        for ($day = 0; $day <= 6; $day++) {
-            BranchSchedule::query()->create([
-                'branch_id' => $branch->id,
-                'day_of_week' => $day,
-                'opens_at' => '09:00',
-                'closes_at' => '21:00',
-                'is_closed' => $day === 0, // Sunday closed by default
-            ]);
-        }
+        Branch::query()->create($data);
 
         return redirect()->route('branches.index')->with('success', 'Sucursal creada correctamente.');
     }
@@ -82,6 +70,12 @@ class BranchController extends Controller
         $data = $request->validated();
         $data['is_active'] = $data['is_active'] ?? $branch->is_active;
 
+        if ($branch->is_active && ! ($data['is_active'] ?? true)) {
+            if ($this->isLastActiveBranch($branch)) {
+                return redirect()->route('branches.index')->with('error', 'No puedes desactivar la última sucursal activa.');
+            }
+        }
+
         $branch->update($data);
 
         return redirect()->route('branches.index')->with('success', 'Sucursal actualizada correctamente.');
@@ -95,6 +89,10 @@ class BranchController extends Controller
             return redirect()->route('branches.index')->with('error', 'No puedes eliminar una sucursal con pedidos activos.');
         }
 
+        if ($branch->is_active && $this->isLastActiveBranch($branch)) {
+            return redirect()->route('branches.index')->with('error', 'No puedes eliminar la última sucursal activa.');
+        }
+
         $branch->delete();
 
         return redirect()->route('branches.index')->with('success', 'Sucursal eliminada correctamente.');
@@ -104,8 +102,21 @@ class BranchController extends Controller
     {
         $this->authorize('update', $branch);
 
+        if ($branch->is_active && $this->isLastActiveBranch($branch)) {
+            return redirect()->route('branches.index')->with('error', 'No puedes desactivar la última sucursal activa.');
+        }
+
         $branch->update(['is_active' => ! $branch->is_active]);
 
         return redirect()->route('branches.index');
+    }
+
+    private function isLastActiveBranch(Branch $branch): bool
+    {
+        return Branch::query()
+            ->where('restaurant_id', $branch->restaurant_id)
+            ->where('is_active', true)
+            ->where('id', '!=', $branch->id)
+            ->doesntExist();
     }
 }

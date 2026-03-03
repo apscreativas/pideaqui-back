@@ -114,12 +114,12 @@ function save(pm) {
                             <p v-if="forms[pm.id].errors.account_holder" class="text-xs text-red-500 mt-1">{{ forms[pm.id].errors.account_holder }}</p>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 mb-1">CLABE interbancaria (18 dígitos) *</label>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">CLABE interbancaria (16 o 18 dígitos) *</label>
                             <input
                                 v-model="forms[pm.id].clabe"
                                 type="text"
                                 maxlength="18"
-                                placeholder="000000000000000000"
+                                placeholder="0000000000000000"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
                             />
                             <p v-if="forms[pm.id].errors.clabe" class="text-xs text-red-500 mt-1">{{ forms[pm.id].errors.clabe }}</p>

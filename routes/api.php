@@ -13,5 +13,5 @@ Route::middleware('auth.restaurant')->group(function (): void {
     Route::get('/menu', [MenuController::class, 'index'])->name('api.menu');
     Route::get('/branches', [BranchController::class, 'index'])->name('api.branches');
     Route::post('/delivery/calculate', [DeliveryController::class, 'calculate'])->name('api.delivery.calculate');
-    Route::post('/orders', [OrderController::class, 'store'])->name('api.orders.store');
+    Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('api.orders.store');
 });

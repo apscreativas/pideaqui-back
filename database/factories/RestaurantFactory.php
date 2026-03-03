@@ -24,7 +24,9 @@ class RestaurantFactory extends Factory
             'logo_path' => null,
             'access_token' => \Illuminate\Support\Str::random(64),
             'is_active' => true,
-            'max_monthly_orders' => 500,
+            'orders_limit' => 500,
+            'orders_limit_start' => now()->startOfMonth(),
+            'orders_limit_end' => now()->endOfMonth(),
             'max_branches' => 3,
         ];
     }

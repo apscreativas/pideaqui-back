@@ -3,25 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Models\Branch;
-use App\Services\StatisticsService;
+use App\Services\LimitService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class LimitsController extends Controller
 {
-    public function __construct(private readonly StatisticsService $statistics) {}
+    public function __construct(private readonly LimitService $limitService) {}
 
     public function index(Request $request): Response
     {
         $restaurant = $request->user()->load('restaurant')->restaurant;
 
-        $monthlyCount = $this->statistics->monthlyCount($restaurant->id);
-        $branchCount = Branch::query()->count();
+        $ordersCount = $this->limitService->orderCountInPeriod($restaurant);
+        $branchCount = Branch::query()->where('restaurant_id', $restaurant->id)->count();
 
         return Inertia::render('Settings/Limits', [
-            'monthly_orders_count' => $monthlyCount,
-            'max_monthly_orders' => $restaurant->max_monthly_orders,
+            'orders_count' => $ordersCount,
+            'orders_limit' => $restaurant->orders_limit,
+            'orders_limit_start' => $restaurant->orders_limit_start?->toDateString(),
+            'orders_limit_end' => $restaurant->orders_limit_end?->toDateString(),
             'branch_count' => $branchCount,
             'max_branches' => $restaurant->max_branches,
         ]);

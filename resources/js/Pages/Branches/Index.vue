@@ -1,5 +1,6 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
+import { computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
@@ -8,6 +9,12 @@ const props = defineProps({
 })
 
 const usagePercent = Math.round((props.branches.length / props.maxBranches) * 100)
+
+const activeBranchCount = computed(() => props.branches.filter(b => b.is_active).length)
+
+function isLastActive(branch) {
+    return branch.is_active && activeBranchCount.value <= 1
+}
 
 function toggleBranch(branch) {
     router.patch(route('branches.toggle', branch.id))
@@ -128,24 +135,21 @@ function deleteBranch(branch) {
                                 >
                                     <span class="material-symbols-outlined text-lg">edit</span>
                                 </Link>
-                                <Link
-                                    :href="route('branches.schedules.edit', branch.id)"
-                                    class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-colors"
-                                    title="Horarios"
-                                >
-                                    <span class="material-symbols-outlined text-lg">schedule</span>
-                                </Link>
                                 <button
                                     @click="toggleBranch(branch)"
-                                    class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl transition-colors"
-                                    :title="branch.is_active ? 'Desactivar' : 'Activar'"
+                                    :disabled="isLastActive(branch)"
+                                    class="p-2 rounded-xl transition-colors"
+                                    :class="isLastActive(branch) ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'"
+                                    :title="isLastActive(branch) ? 'No puedes desactivar la última sucursal activa' : (branch.is_active ? 'Desactivar' : 'Activar')"
                                 >
                                     <span class="material-symbols-outlined text-lg">{{ branch.is_active ? 'toggle_on' : 'toggle_off' }}</span>
                                 </button>
                                 <button
                                     @click="deleteBranch(branch)"
-                                    class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                                    title="Eliminar"
+                                    :disabled="isLastActive(branch)"
+                                    class="p-2 rounded-xl transition-colors"
+                                    :class="isLastActive(branch) ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'"
+                                    :title="isLastActive(branch) ? 'No puedes eliminar la última sucursal activa' : 'Eliminar'"
                                 >
                                     <span class="material-symbols-outlined text-lg">delete</span>
                                 </button>

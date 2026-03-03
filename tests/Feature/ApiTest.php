@@ -80,16 +80,16 @@ class ApiTest extends TestCase
                     'slug',
                     'delivery_methods' => ['delivery', 'pickup', 'dine_in'],
                     'payment_methods',
-                    'monthly_orders_reached',
+                    'orders_limit_reached',
                 ],
             ])
-            ->assertJsonPath('data.monthly_orders_reached', false)
+            ->assertJsonPath('data.orders_limit_reached', false)
             ->assertJsonCount(1, 'data.payment_methods');
     }
 
-    public function test_get_restaurant_reports_monthly_limit_reached(): void
+    public function test_get_restaurant_reports_orders_limit_reached(): void
     {
-        $restaurant = $this->restaurant(['max_monthly_orders' => 2]);
+        $restaurant = $this->restaurant(['orders_limit' => 2]);
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
         $customer = Customer::factory()->create();
 
@@ -108,7 +108,7 @@ class ApiTest extends TestCase
 
         $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
             ->assertOk()
-            ->assertJsonPath('data.monthly_orders_reached', true);
+            ->assertJsonPath('data.orders_limit_reached', true);
     }
 
     // ─── GET /api/menu ───────────────────────────────────────────────────────
@@ -178,8 +178,10 @@ class ApiTest extends TestCase
             'category_id' => $category->id,
             'is_active' => true,
         ]);
-        $group = ModifierGroup::factory()->create(['restaurant_id' => $restaurant->id]);
-        $product->modifierGroups()->attach($group);
+        $group = ModifierGroup::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+        ]);
         ModifierOption::factory()->create(['modifier_group_id' => $group->id]);
 
         $response = $this->getJson('/api/menu', $this->authHeaders($restaurant))->assertOk();

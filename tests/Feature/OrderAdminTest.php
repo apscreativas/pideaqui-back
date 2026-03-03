@@ -16,7 +16,7 @@ class OrderAdminTest extends TestCase
 
     private function createAdminWithRestaurant(): array
     {
-        $restaurant = Restaurant::factory()->create(['max_monthly_orders' => 500]);
+        $restaurant = Restaurant::factory()->create(['orders_limit' => 500]);
         $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
 
         return [$user, $restaurant];
@@ -62,7 +62,7 @@ class OrderAdminTest extends TestCase
             ->has('branches')
             ->has('filters')
             ->has('monthly_count')
-            ->has('max_monthly_orders')
+            ->has('orders_limit')
         );
     }
 

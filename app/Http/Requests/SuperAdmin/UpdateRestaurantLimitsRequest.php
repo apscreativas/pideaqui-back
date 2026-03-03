@@ -19,7 +19,9 @@ class UpdateRestaurantLimitsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'max_monthly_orders' => ['required', 'integer', 'min:1'],
+            'orders_limit' => ['required', 'integer', 'min:1'],
+            'orders_limit_start' => ['required', 'date'],
+            'orders_limit_end' => ['required', 'date', 'after_or_equal:orders_limit_start'],
             'max_branches' => ['required', 'integer', 'min:1'],
         ];
     }
@@ -35,21 +37,24 @@ class UpdateRestaurantLimitsRequest extends FormRequest
                     return;
                 }
 
-                $now = Carbon::now();
+                $start = Carbon::parse($this->input('orders_limit_start'));
+                $end = Carbon::parse($this->input('orders_limit_end'));
 
-                $currentMonthlyOrders = Order::query()
+                $currentOrders = Order::query()
                     ->withoutGlobalScope(TenantScope::class)
                     ->where('restaurant_id', $restaurant->id)
-                    ->whereYear('created_at', $now->year)
-                    ->whereMonth('created_at', $now->month)
+                    ->whereBetween('created_at', [
+                        $start->startOfDay(),
+                        $end->endOfDay(),
+                    ])
                     ->count();
 
-                $newLimit = (int) $this->input('max_monthly_orders');
+                $newLimit = (int) $this->input('orders_limit');
 
-                if ($newLimit < $currentMonthlyOrders) {
+                if ($newLimit < $currentOrders) {
                     $validator->errors()->add(
-                        'max_monthly_orders',
-                        "El límite no puede ser menor al número de pedidos del mes actual ({$currentMonthlyOrders}).",
+                        'orders_limit',
+                        "El límite no puede ser menor al número de pedidos del periodo ({$currentOrders}).",
                     );
                 }
             },

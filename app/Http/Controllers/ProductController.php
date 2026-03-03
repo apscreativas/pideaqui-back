@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
-use App\Models\ModifierGroup;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,11 +19,9 @@ class ProductController extends Controller
         $this->authorize('create', Product::class);
 
         $categories = Category::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
-        $modifierGroups = ModifierGroup::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Products/Create', [
             'categories' => $categories,
-            'modifierGroups' => $modifierGroups,
         ]);
     }
 
@@ -41,14 +38,12 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', config('filesystems.media_disk', 'public'));
         }
 
-        $modifierGroupIds = $data['modifier_group_ids'] ?? [];
-        unset($data['image'], $data['modifier_group_ids']);
+        $modifierGroups = $data['modifier_groups'] ?? [];
+        unset($data['image'], $data['modifier_groups']);
 
         $product = Product::query()->create($data);
 
-        if (! empty($modifierGroupIds)) {
-            $product->modifierGroups()->sync($modifierGroupIds);
-        }
+        $this->syncModifierGroups($product, $modifierGroups);
 
         return redirect()->route('menu.index')->with('success', 'Producto creado correctamente.');
     }
@@ -59,12 +54,10 @@ class ProductController extends Controller
 
         $categories = Category::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
         $product->load('modifierGroups.options');
-        $allModifierGroups = ModifierGroup::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Products/Edit', [
             'product' => $product,
             'categories' => $categories,
-            'allModifierGroups' => $allModifierGroups,
         ]);
     }
 
@@ -82,11 +75,12 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', config('filesystems.media_disk', 'public'));
         }
 
-        $modifierGroupIds = $data['modifier_group_ids'] ?? [];
-        unset($data['image'], $data['modifier_group_ids']);
+        $modifierGroups = $data['modifier_groups'] ?? [];
+        unset($data['image'], $data['modifier_groups']);
 
         $product->update($data);
-        $product->modifierGroups()->sync($modifierGroupIds);
+
+        $this->syncModifierGroups($product, $modifierGroups);
 
         return redirect()->route('menu.index')->with('success', 'Producto actualizado correctamente.');
     }
@@ -132,5 +126,77 @@ class ProductController extends Controller
         }
 
         return redirect()->route('menu.index');
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $groups
+     */
+    private function syncModifierGroups(Product $product, array $groups): void
+    {
+        $existingGroupIds = $product->modifierGroups()->pluck('id')->all();
+        $incomingGroupIds = [];
+
+        foreach ($groups as $sortOrder => $groupData) {
+            if (! empty($groupData['id']) && in_array($groupData['id'], $existingGroupIds)) {
+                // Update existing group.
+                $group = $product->modifierGroups()->find($groupData['id']);
+                $group->update([
+                    'name' => $groupData['name'],
+                    'selection_type' => $groupData['selection_type'],
+                    'is_required' => $groupData['is_required'] ?? false,
+                    'sort_order' => $sortOrder,
+                ]);
+                $incomingGroupIds[] = $group->id;
+
+                // Sync options.
+                $existingOptionIds = $group->options()->pluck('id')->all();
+                $incomingOptionIds = [];
+
+                foreach ($groupData['options'] as $optSort => $optData) {
+                    if (! empty($optData['id']) && in_array($optData['id'], $existingOptionIds)) {
+                        $group->options()->where('id', $optData['id'])->update([
+                            'name' => $optData['name'],
+                            'price_adjustment' => $optData['price_adjustment'] ?? 0,
+                            'production_cost' => $optData['production_cost'] ?? 0,
+                            'sort_order' => $optSort,
+                        ]);
+                        $incomingOptionIds[] = $optData['id'];
+                    } else {
+                        $newOpt = $group->options()->create([
+                            'name' => $optData['name'],
+                            'price_adjustment' => $optData['price_adjustment'] ?? 0,
+                            'production_cost' => $optData['production_cost'] ?? 0,
+                            'sort_order' => $optSort,
+                        ]);
+                        $incomingOptionIds[] = $newOpt->id;
+                    }
+                }
+
+                // Delete removed options.
+                $group->options()->whereNotIn('id', $incomingOptionIds)->delete();
+            } else {
+                // Create new group.
+                $group = $product->modifierGroups()->create([
+                    'restaurant_id' => $product->restaurant_id,
+                    'name' => $groupData['name'],
+                    'selection_type' => $groupData['selection_type'],
+                    'is_required' => $groupData['is_required'] ?? false,
+                    'sort_order' => $sortOrder,
+                ]);
+                $incomingGroupIds[] = $group->id;
+
+                foreach ($groupData['options'] as $optSort => $optData) {
+                    $group->options()->create([
+                        'name' => $optData['name'],
+                        'price_adjustment' => $optData['price_adjustment'] ?? 0,
+                        'production_cost' => $optData['production_cost'] ?? 0,
+                        'sort_order' => $optSort,
+                    ]);
+                }
+            }
+        }
+
+        // Delete groups that are no longer in the request.
+        $product->modifierGroups()->whereNotIn('id', $incomingGroupIds)->delete();
     }
 }

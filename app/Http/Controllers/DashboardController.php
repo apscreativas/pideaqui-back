@@ -15,9 +15,6 @@ class DashboardController extends Controller
     {
         $restaurant = $request->user()->load('restaurant')->restaurant;
 
-        return Inertia::render('Dashboard/Index', $this->statistics->getDashboardData(
-            restaurantId: $restaurant->id,
-            maxMonthlyOrders: $restaurant->max_monthly_orders,
-        ));
+        return Inertia::render('Dashboard/Index', $this->statistics->getDashboardData($restaurant));
     }
 }

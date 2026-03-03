@@ -14,7 +14,11 @@ class RestaurantController extends Controller
     {
         /** @var Restaurant $restaurant */
         $restaurant = $request->attributes->get('restaurant');
-        $restaurant->load(['paymentMethods', 'branches' => fn ($q) => $q->where('is_active', true)]);
+        $restaurant->load([
+            'paymentMethods',
+            'branches' => fn ($q) => $q->where('is_active', true),
+            'schedules',
+        ]);
 
         return (new RestaurantResource($restaurant))->response();
     }

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateGeneralSettingsRequest;
+use App\Http\Requests\UpdateRestaurantScheduleRequest;
+use App\Models\Restaurant;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -41,5 +43,50 @@ class SettingsController extends Controller
         $restaurant->update($data);
 
         return back()->with('success', 'Configuración guardada.');
+    }
+
+    public function schedules(Request $request): Response
+    {
+        /** @var Restaurant $restaurant */
+        $restaurant = $request->user()->load('restaurant')->restaurant;
+
+        // Ensure all 7 days exist
+        for ($day = 0; $day <= 6; $day++) {
+            $restaurant->schedules()->firstOrCreate(
+                ['day_of_week' => $day],
+                ['opens_at' => '09:00', 'closes_at' => '21:00', 'is_closed' => true],
+            );
+        }
+
+        $schedules = $restaurant->schedules()->orderBy('day_of_week')->get()
+            ->map(fn ($s) => [
+                'day_of_week' => $s->day_of_week,
+                'opens_at' => $s->opens_at ? substr($s->opens_at, 0, 5) : '09:00',
+                'closes_at' => $s->closes_at ? substr($s->closes_at, 0, 5) : '21:00',
+                'is_closed' => $s->is_closed,
+            ]);
+
+        return Inertia::render('Settings/Schedules', [
+            'schedules' => $schedules,
+        ]);
+    }
+
+    public function updateSchedules(UpdateRestaurantScheduleRequest $request): RedirectResponse
+    {
+        /** @var Restaurant $restaurant */
+        $restaurant = $request->user()->load('restaurant')->restaurant;
+
+        foreach ($request->validated()['schedules'] as $scheduleData) {
+            $restaurant->schedules()->updateOrCreate(
+                ['day_of_week' => $scheduleData['day_of_week']],
+                [
+                    'opens_at' => $scheduleData['is_closed'] ? null : $scheduleData['opens_at'],
+                    'closes_at' => $scheduleData['is_closed'] ? null : $scheduleData['closes_at'],
+                    'is_closed' => $scheduleData['is_closed'] ?? false,
+                ],
+            );
+        }
+
+        return back()->with('success', 'Horarios actualizados.');
     }
 }

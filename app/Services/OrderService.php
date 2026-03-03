@@ -5,8 +5,11 @@ namespace App\Services;
 use App\DTOs\OrderCreatedResult;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\DeliveryRange;
+use App\Models\ModifierGroup;
 use App\Models\ModifierOption;
 use App\Models\Order;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Restaurant;
 use Illuminate\Support\Facades\DB;
@@ -23,9 +26,27 @@ class OrderService
      */
     public function store(array $validated, Restaurant $restaurant): OrderCreatedResult
     {
-        // PASO 1 — Monthly limit check.
-        if ($this->limitService->isMonthlyLimitReached($restaurant)) {
+        // PASO 1 — Order limit check (outside transaction for fast fail, re-checked inside).
+        if ($this->limitService->isOrderLimitReached($restaurant)) {
             throw new \DomainException('monthly_limit_reached');
+        }
+
+        // PASO 1b — Validate delivery type is allowed by the restaurant.
+        $deliveryType = $validated['delivery_type'];
+        $allowsMap = ['delivery' => 'allows_delivery', 'pickup' => 'allows_pickup', 'dine_in' => 'allows_dine_in'];
+        if (! $restaurant->{$allowsMap[$deliveryType]}) {
+            throw ValidationException::withMessages(['delivery_type' => ['Este restaurante no permite este tipo de entrega.']]);
+        }
+
+        // PASO 1c — Validate payment method is active for this restaurant.
+        $hasPaymentMethod = PaymentMethod::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('type', $validated['payment_method'])
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $hasPaymentMethod) {
+            throw ValidationException::withMessages(['payment_method' => ['Este método de pago no está disponible.']]);
         }
 
         // PASO 2 — Find or create customer, always update name/phone.
@@ -35,7 +56,7 @@ class OrderService
         );
         $customer->update(['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']]);
 
-        // PASO 3 — Validate branch belongs to this restaurant.
+        // PASO 3 — Validate branch belongs to this restaurant AND is active.
         $branch = Branch::query()
             ->where('id', $validated['branch_id'])
             ->where('restaurant_id', $restaurant->id)
@@ -43,6 +64,10 @@ class OrderService
 
         if (! $branch) {
             throw ValidationException::withMessages(['branch_id' => ['La sucursal no pertenece a este restaurante.']]);
+        }
+
+        if (! $branch->is_active) {
+            throw ValidationException::withMessages(['branch_id' => ['La sucursal no está activa.']]);
         }
 
         // PASO 4 — Load and validate all requested products.
@@ -59,23 +84,53 @@ class OrderService
             throw ValidationException::withMessages(['items' => ['Uno o más productos no están disponibles.']]);
         }
 
-        // PASO 5 — Validate modifier options belong to products of this restaurant.
-        $optionIds = collect($validated['items'])
-            ->flatMap(fn (array $item) => collect($item['modifiers'] ?? [])->pluck('modifier_option_id'))
-            ->filter()
-            ->unique()
-            ->values();
-
+        // PASO 5 — Validate modifier options per-item: each option must belong to the specific product's modifier groups.
         $validOptions = collect();
-        if ($optionIds->isNotEmpty()) {
-            $validOptions = ModifierOption::query()
-                ->whereIn('id', $optionIds)
-                ->whereHas('modifierGroup', fn ($q) => $q->where('restaurant_id', $restaurant->id))
+        foreach ($validated['items'] as $itemData) {
+            $itemOptionIds = collect($itemData['modifiers'] ?? [])->pluck('modifier_option_id')->filter()->unique()->values();
+
+            if ($itemOptionIds->isEmpty()) {
+                continue;
+            }
+
+            $itemValidOptions = ModifierOption::query()
+                ->whereIn('id', $itemOptionIds)
+                ->whereHas('modifierGroup', fn ($q) => $q->where('restaurant_id', $restaurant->id)->where('product_id', $itemData['product_id']))
                 ->get()
                 ->keyBy('id');
 
-            if ($validOptions->count() !== $optionIds->count()) {
-                throw ValidationException::withMessages(['items' => ['Uno o más modificadores no son válidos.']]);
+            if ($itemValidOptions->count() !== $itemOptionIds->count()) {
+                throw ValidationException::withMessages(['items' => ['Uno o más modificadores no son válidos para "'.$products[$itemData['product_id']]->name.'".']]);
+            }
+
+            foreach ($itemValidOptions as $id => $opt) {
+                $validOptions->put($id, $opt);
+            }
+        }
+
+        // PASO 5b — Validate required modifier groups have at least one selection per item.
+        foreach ($validated['items'] as $itemData) {
+            $requiredGroups = ModifierGroup::query()
+                ->where('product_id', $itemData['product_id'])
+                ->where('restaurant_id', $restaurant->id)
+                ->where('is_required', true)
+                ->get();
+
+            if ($requiredGroups->isEmpty()) {
+                continue;
+            }
+
+            $sentOptionIds = collect($itemData['modifiers'] ?? [])->pluck('modifier_option_id')->toArray();
+
+            foreach ($requiredGroups as $group) {
+                $groupOptionIds = $group->options()->pluck('id')->toArray();
+                $hasSelection = ! empty(array_intersect($sentOptionIds, $groupOptionIds));
+
+                if (! $hasSelection) {
+                    throw ValidationException::withMessages([
+                        'items' => ['El grupo de modificadores "'.$group->name.'" es obligatorio para "'.$products[$itemData['product_id']]->name.'".'],
+                    ]);
+                }
             }
         }
 
@@ -103,11 +158,34 @@ class OrderService
             $subtotal += ((float) $products[$itemData['product_id']]->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
-        $deliveryCost = $validated['delivery_type'] === 'delivery' ? (float) ($validated['delivery_cost'] ?? 0) : 0.0;
+        // PASO 7b — Validate delivery cost against delivery ranges.
+        $deliveryCost = 0.0;
+        if ($validated['delivery_type'] === 'delivery') {
+            $distanceKm = (float) ($validated['distance_km'] ?? 0);
+
+            $range = DeliveryRange::query()
+                ->where('restaurant_id', $restaurant->id)
+                ->where('min_km', '<=', $distanceKm)
+                ->where('max_km', '>', $distanceKm)
+                ->first();
+
+            if (! $range) {
+                throw ValidationException::withMessages(['delivery_cost' => ['No hay rango de entrega configurado para esta distancia.']]);
+            }
+
+            $deliveryCost = (float) $range->price;
+        }
+
         $total = $subtotal + $deliveryCost;
 
-        // PASO 8 — Create Order, OrderItems and OrderItemModifiers in a transaction.
+        // PASO 8 — Create Order inside transaction with limit re-check (prevents TOCTOU race condition).
         $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $products, $validOptions, $subtotal, $deliveryCost, $total): Order {
+            // Re-check order limit with a FOR UPDATE lock on the restaurant row.
+            $lockedRestaurant = Restaurant::query()->lockForUpdate()->find($restaurant->id);
+            if ($this->limitService->isOrderLimitReached($lockedRestaurant)) {
+                throw new \DomainException('monthly_limit_reached');
+            }
+
             $order = Order::create([
                 'restaurant_id' => $restaurant->id,
                 'branch_id' => $branch->id,

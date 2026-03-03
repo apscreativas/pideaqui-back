@@ -6,22 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\CreateRestaurantRequest;
 use App\Http\Requests\SuperAdmin\UpdateRestaurantLimitsRequest;
 use App\Models\Branch;
-use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Restaurant;
 use App\Models\Scopes\TenantScope;
 use App\Models\User;
+use App\Services\LimitService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class RestaurantController extends Controller
 {
+    public function __construct(private readonly LimitService $limitService) {}
+
     public function index(Request $request): Response
     {
         $query = Restaurant::query()
@@ -37,18 +37,8 @@ class RestaurantController extends Controller
 
         $restaurants = $query->latest()->paginate(20)->withQueryString();
 
-        $now = Carbon::now();
-
-        $orderCounts = Order::query()
-            ->withoutGlobalScope(TenantScope::class)
-            ->whereYear('created_at', $now->year)
-            ->whereMonth('created_at', $now->month)
-            ->selectRaw('restaurant_id, COUNT(*) as count')
-            ->groupBy('restaurant_id')
-            ->pluck('count', 'restaurant_id');
-
-        $restaurants->each(function (Restaurant $restaurant) use ($orderCounts): void {
-            $restaurant->monthly_orders_count = $orderCounts[$restaurant->id] ?? 0;
+        $restaurants->each(function (Restaurant $restaurant): void {
+            $restaurant->period_orders_count = $this->limitService->orderCountInPeriod($restaurant);
         });
 
         return Inertia::render('SuperAdmin/Restaurants/Index', [
@@ -72,19 +62,22 @@ class RestaurantController extends Controller
                 'slug' => $data['slug'],
                 'access_token' => hash('sha256', Str::random(40)),
                 'is_active' => true,
-                'max_monthly_orders' => $data['max_monthly_orders'],
+                'orders_limit' => $data['orders_limit'],
+                'orders_limit_start' => $data['orders_limit_start'],
+                'orders_limit_end' => $data['orders_limit_end'],
                 'max_branches' => $data['max_branches'],
             ]);
 
-            User::create([
-                'restaurant_id' => $restaurant->id,
+            $user = new User([
                 'name' => $data['admin_name'],
                 'email' => $data['admin_email'],
-                'password' => Hash::make($data['password']),
+                'password' => $data['password'],
             ]);
+            $user->restaurant_id = $restaurant->id;
+            $user->save();
 
             PaymentMethod::insert([
-                ['restaurant_id' => $restaurant->id, 'type' => 'cash', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
+                ['restaurant_id' => $restaurant->id, 'type' => 'cash', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
                 ['restaurant_id' => $restaurant->id, 'type' => 'terminal', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
                 ['restaurant_id' => $restaurant->id, 'type' => 'transfer', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
             ]);
@@ -98,14 +91,7 @@ class RestaurantController extends Controller
 
     public function show(Restaurant $restaurant): Response
     {
-        $now = Carbon::now();
-
-        $monthlyOrdersCount = Order::query()
-            ->withoutGlobalScope(TenantScope::class)
-            ->where('restaurant_id', $restaurant->id)
-            ->whereYear('created_at', $now->year)
-            ->whereMonth('created_at', $now->month)
-            ->count();
+        $ordersCount = $this->limitService->orderCountInPeriod($restaurant);
 
         $branchCount = Branch::query()
             ->withoutGlobalScope(TenantScope::class)
@@ -117,9 +103,9 @@ class RestaurantController extends Controller
             ->first(['id', 'name', 'email']);
 
         return Inertia::render('SuperAdmin/Restaurants/Show', [
-            'restaurant' => $restaurant,
+            'restaurant' => $restaurant->makeVisible('access_token'),
             'admin' => $admin,
-            'monthly_orders_count' => $monthlyOrdersCount,
+            'orders_count' => $ordersCount,
             'branch_count' => $branchCount,
         ]);
     }
@@ -129,6 +115,15 @@ class RestaurantController extends Controller
         $restaurant->update($request->validated());
 
         return back()->with('success', 'Límites actualizados.');
+    }
+
+    public function regenerateToken(Restaurant $restaurant): RedirectResponse
+    {
+        $restaurant->update([
+            'access_token' => hash('sha256', Str::random(40)),
+        ]);
+
+        return back()->with('success', 'Token regenerado exitosamente.');
     }
 
     public function toggleActive(Restaurant $restaurant): RedirectResponse

@@ -7,7 +7,7 @@ const props = defineProps({
     yesterday_orders_count: Number,
     preparing_orders_count: Number,
     monthly_orders_count: Number,
-    max_monthly_orders: Number,
+    orders_limit: Number,
     net_profit_month: Number,
     orders_by_branch: Array,
     recent_orders: Array,
@@ -15,7 +15,7 @@ const props = defineProps({
 
 const monthlyPercent = Math.min(
     100,
-    Math.round((props.monthly_orders_count / props.max_monthly_orders) * 100),
+    Math.round((props.monthly_orders_count / props.orders_limit) * 100),
 )
 
 const maxBranchCount = props.orders_by_branch.length
@@ -116,12 +116,12 @@ const todayDiff = props.yesterday_orders_count > 0
                     <div class="p-2 bg-purple-50 rounded-lg">
                         <span class="material-symbols-outlined text-purple-600">calendar_month</span>
                     </div>
-                    <span class="text-xs font-medium text-gray-500">Meta: {{ max_monthly_orders }}</span>
+                    <span class="text-xs font-medium text-gray-500">Meta: {{ orders_limit }}</span>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos mensuales</p>
+                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos del periodo</p>
                 <div class="flex items-baseline gap-2 mb-2">
                     <h3 class="text-3xl font-bold text-gray-900">{{ monthly_orders_count }}</h3>
-                    <span class="text-sm text-gray-400">/ {{ max_monthly_orders }}</span>
+                    <span class="text-sm text-gray-400">/ {{ orders_limit }}</span>
                 </div>
                 <div class="w-full bg-gray-100 rounded-full h-1.5">
                     <div

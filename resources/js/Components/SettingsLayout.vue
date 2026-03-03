@@ -3,11 +3,11 @@ import { Link } from '@inertiajs/vue3'
 
 const NAV = [
     { label: 'General',            icon: 'storefront',        route: 'settings.general' },
+    { label: 'Horarios',           icon: 'schedule',          route: 'settings.schedules' },
     { label: 'Métodos de entrega', icon: 'two_wheeler',       route: 'settings.delivery-methods' },
     { label: 'Tarifas de envío',   icon: 'local_shipping',    route: 'settings.shipping-rates' },
     { label: 'Métodos de pago',    icon: 'payments',          route: 'settings.payment-methods' },
-    { label: 'Código QR',          icon: 'qr_code_2',         route: 'settings.qr-code' },
-    { label: 'Mi cuenta',          icon: 'manage_accounts',   route: 'settings.profile' },
+{ label: 'Mi cuenta',          icon: 'manage_accounts',   route: 'settings.profile' },
     { label: 'Mis límites',        icon: 'monitor_heart',     route: 'settings.limits' },
 ]
 

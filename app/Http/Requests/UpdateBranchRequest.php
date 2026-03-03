@@ -21,8 +21,16 @@ class UpdateBranchRequest extends FormRequest
             'address' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'whatsapp' => ['required', 'string', 'max:20'],
+            'whatsapp' => ['required', 'string', 'regex:/^\d{10}$/'],
             'is_active' => ['boolean'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'whatsapp.regex' => 'El número de WhatsApp debe ser de exactamente 10 dígitos numéricos.',
         ];
     }
 }

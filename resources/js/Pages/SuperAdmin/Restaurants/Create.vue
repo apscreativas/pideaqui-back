@@ -9,7 +9,12 @@ const form = useForm({
     admin_email: '',
     password: '',
     password_confirmation: '',
-    max_monthly_orders: 500,
+    orders_limit: 500,
+    orders_limit_start: new Date().toISOString().slice(0, 10).replace(/-\d{2}$/, '-01'),
+    orders_limit_end: (() => {
+        const d = new Date()
+        return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10)
+    })(),
     max_branches: 3,
 })
 
@@ -131,27 +136,51 @@ function submit() {
                     <div>
                         <p class="text-sm font-semibold text-gray-900 mb-4">Límites del plan</p>
 
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Pedidos mensuales máx.</label>
-                                <input
-                                    v-model.number="form.max_monthly_orders"
-                                    type="number"
-                                    min="1"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                                <p v-if="form.errors.max_monthly_orders" class="text-xs text-red-500 mt-1">{{ form.errors.max_monthly_orders }}</p>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Límite de pedidos</label>
+                                    <input
+                                        v-model.number="form.orders_limit"
+                                        type="number"
+                                        min="1"
+                                        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                    />
+                                    <p v-if="form.errors.orders_limit" class="text-xs text-red-500 mt-1">{{ form.errors.orders_limit }}</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Sucursales máx.</label>
+                                    <input
+                                        v-model.number="form.max_branches"
+                                        type="number"
+                                        min="1"
+                                        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                    />
+                                    <p v-if="form.errors.max_branches" class="text-xs text-red-500 mt-1">{{ form.errors.max_branches }}</p>
+                                </div>
                             </div>
 
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Sucursales máx.</label>
-                                <input
-                                    v-model.number="form.max_branches"
-                                    type="number"
-                                    min="1"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                                <p v-if="form.errors.max_branches" class="text-xs text-red-500 mt-1">{{ form.errors.max_branches }}</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Inicio del periodo</label>
+                                    <input
+                                        v-model="form.orders_limit_start"
+                                        type="date"
+                                        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                    />
+                                    <p v-if="form.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ form.errors.orders_limit_start }}</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Fin del periodo</label>
+                                    <input
+                                        v-model="form.orders_limit_end"
+                                        type="date"
+                                        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                    />
+                                    <p v-if="form.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ form.errors.orders_limit_end }}</p>
+                                </div>
                             </div>
                         </div>
                     </div>

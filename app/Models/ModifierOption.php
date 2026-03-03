@@ -17,6 +17,7 @@ class ModifierOption extends Model
         'modifier_group_id',
         'name',
         'price_adjustment',
+        'production_cost',
         'sort_order',
     ];
 
@@ -24,6 +25,7 @@ class ModifierOption extends Model
     {
         return [
             'price_adjustment' => 'decimal:2',
+            'production_cost' => 'decimal:2',
             'sort_order' => 'integer',
         ];
     }

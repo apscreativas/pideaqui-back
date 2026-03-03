@@ -256,17 +256,6 @@ function formatPrice(value) {
             </div>
         </div>
 
-        <!-- Modifiers link -->
-        <div class="mt-4">
-            <Link
-                :href="route('modifiers.index')"
-                class="flex items-center gap-2 text-sm text-gray-500 hover:text-[#FF5722] transition-colors"
-            >
-                <span class="material-symbols-outlined text-lg">tune</span>
-                Gestionar grupos de modificadores
-            </Link>
-        </div>
-
         <!-- Category modal -->
         <CategoryModal
             :show="showCategoryModal"

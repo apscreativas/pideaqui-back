@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\DTOs\DeliveryResult;
 use App\Models\Branch;
-use App\Models\BranchSchedule;
 use App\Models\Restaurant;
+use App\Models\RestaurantSchedule;
 use Illuminate\Support\Collection;
 
 class DeliveryService
@@ -37,6 +37,7 @@ class DeliveryService
             $branch = $branches->first();
             $distanceKm = $this->haversine->distance($clientLat, $clientLng, (float) $branch->latitude, (float) $branch->longitude);
             $durationMinutes = 0; // Unknown without Google — caller should handle
+
             return $this->buildResult($restaurant, $branch, $distanceKm, $durationMinutes);
         }
 
@@ -96,8 +97,8 @@ class DeliveryService
             }
         }
 
-        // PASO 7 — Schedule validation.
-        [$isOpen, $schedule] = $this->checkSchedule($branch);
+        // PASO 7 — Schedule validation (restaurant-level).
+        [$isOpen, $schedule] = $this->checkSchedule($restaurant);
 
         return new DeliveryResult(
             branch: $branch,
@@ -111,27 +112,37 @@ class DeliveryService
     }
 
     /**
-     * @return array{0: bool, 1: ?BranchSchedule}
+     * @return array{0: bool, 1: ?RestaurantSchedule}
      */
-    private function checkSchedule(Branch $branch): array
+    private function checkSchedule(Restaurant $restaurant): array
     {
         $dayOfWeek = now()->dayOfWeek;
 
-        $schedule = BranchSchedule::query()
-            ->where('branch_id', $branch->id)
+        $schedule = RestaurantSchedule::query()
+            ->where('restaurant_id', $restaurant->id)
             ->where('day_of_week', $dayOfWeek)
             ->first();
 
         if (! $schedule) {
-            return [true, null];
+            return [false, null];
         }
 
         if ($schedule->is_closed) {
             return [false, $schedule];
         }
 
+        if (! $schedule->opens_at || ! $schedule->closes_at) {
+            return [false, $schedule];
+        }
+
         $now = now()->format('H:i:s');
-        $isOpen = $now >= $schedule->opens_at && $now <= $schedule->closes_at;
+
+        // Overnight schedule (e.g., 20:00–02:00): open if current time is after open OR before close.
+        if ($schedule->opens_at > $schedule->closes_at) {
+            $isOpen = $now >= $schedule->opens_at || $now <= $schedule->closes_at;
+        } else {
+            $isOpen = $now >= $schedule->opens_at && $now <= $schedule->closes_at;
+        }
 
         return [$isOpen, $schedule];
     }

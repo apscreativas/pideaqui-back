@@ -4,11 +4,11 @@ import { ref, computed, watch } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
-    orders: Object,   // { received, preparing, on_the_way, delivered }
+    orders: Object,
     branches: Array,
     filters: Object,
     monthly_count: Number,
-    max_monthly_orders: Number,
+    orders_limit: Number,
 })
 
 // --- Optimistic UI: local copy of orders ---
@@ -20,14 +20,77 @@ watch(() => props.orders, (fresh) => {
 
 // --- Filters ---
 const branchId = ref(props.filters?.branch_id ?? '')
-const date = ref(props.filters?.date ?? '')
+const dateFrom = ref(props.filters?.date_from ?? '')
+const dateTo = ref(props.filters?.date_to ?? '')
+const showCustomRange = ref(false)
+
+const today = new Date().toISOString().slice(0, 10)
 
 function applyFilters() {
-    router.get(route('orders.index'), { branch_id: branchId.value || undefined, date: date.value || undefined }, {
+    router.get(route('orders.index'), {
+        branch_id: branchId.value || undefined,
+        date_from: dateFrom.value || undefined,
+        date_to: dateTo.value || undefined,
+    }, {
         preserveState: true,
         replace: true,
     })
 }
+
+function setPreset(preset) {
+    showCustomRange.value = false
+    const now = new Date()
+    if (preset === 'today') {
+        dateFrom.value = today
+        dateTo.value = today
+    } else if (preset === 'yesterday') {
+        const y = new Date(now)
+        y.setDate(y.getDate() - 1)
+        const yd = y.toISOString().slice(0, 10)
+        dateFrom.value = yd
+        dateTo.value = yd
+    } else if (preset === 'week') {
+        const w = new Date(now)
+        w.setDate(w.getDate() - 6)
+        dateFrom.value = w.toISOString().slice(0, 10)
+        dateTo.value = today
+    } else if (preset === 'month') {
+        dateFrom.value = now.toISOString().slice(0, 8) + '01'
+        dateTo.value = today
+    } else if (preset === 'all') {
+        dateFrom.value = ''
+        dateTo.value = ''
+    }
+    applyFilters()
+}
+
+const activePreset = computed(() => {
+    const from = dateFrom.value
+    const to = dateTo.value
+    if (!from && !to) { return 'all' }
+    if (from === today && to === today) { return 'today' }
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    const yd = y.toISOString().slice(0, 10)
+    if (from === yd && to === yd) { return 'yesterday' }
+    const w = new Date()
+    w.setDate(w.getDate() - 6)
+    if (from === w.toISOString().slice(0, 10) && to === today) { return 'week' }
+    const m = new Date().toISOString().slice(0, 8) + '01'
+    if (from === m && to === today) { return 'month' }
+    return 'custom'
+})
+
+function formatDisplayDate(dateStr) {
+    if (!dateStr) { return '' }
+    return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short' }).format(new Date(dateStr + 'T12:00:00'))
+}
+
+const dateRangeLabel = computed(() => {
+    if (!dateFrom.value && !dateTo.value) { return 'Todas las fechas' }
+    if (dateFrom.value === dateTo.value) { return formatDisplayDate(dateFrom.value) }
+    return `${formatDisplayDate(dateFrom.value)} – ${formatDisplayDate(dateTo.value)}`
+})
 
 // --- Helpers ---
 function formatPrice(value) {
@@ -35,7 +98,7 @@ function formatPrice(value) {
 }
 
 function formatTime(dateStr) {
-    return new Date(dateStr).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    return new Intl.DateTimeFormat('es-MX', { hour: '2-digit', minute: '2-digit' }).format(new Date(dateStr))
 }
 
 function orderNumber(id) {
@@ -43,7 +106,7 @@ function orderNumber(id) {
 }
 
 const monthlyPercent = computed(() =>
-    Math.min(100, Math.round((props.monthly_count / props.max_monthly_orders) * 100)),
+    Math.min(100, Math.round((props.monthly_count / props.orders_limit) * 100)),
 )
 
 const COLUMNS = [
@@ -54,11 +117,6 @@ const COLUMNS = [
 ]
 
 const NEXT_STATUS = { received: 'preparing', preparing: 'on_the_way', on_the_way: 'delivered' }
-
-function itemsSummary(items) {
-    if (!items?.length) { return '' }
-    return items.map((i) => `${i.quantity}x ${i.product?.name ?? 'producto'}`).join(', ')
-}
 
 // --- Drag & Drop ---
 const draggingOrder = ref(null)
@@ -106,7 +164,6 @@ function onDrop(targetColKey, event) {
     const fromCol = draggingFromCol.value
     if (!order || !fromCol || !isValidDropTarget(targetColKey)) { return }
 
-    // Optimistic move
     const fromList = localOrders.value[fromCol]
     const idx = fromList.findIndex((o) => o.id === order.id)
     if (idx === -1) { return }
@@ -115,11 +172,9 @@ function onDrop(targetColKey, event) {
 
     didDrag = true
 
-    // Persist via backend
     router.put(route('orders.advance-status', order.id), {}, {
         preserveScroll: true,
         onError() {
-            // Revert on failure
             localOrders.value = JSON.parse(JSON.stringify(props.orders))
         },
     })
@@ -135,24 +190,25 @@ function onCardClick(orderId) {
 <template>
     <Head title="Pedidos" />
     <AppLayout title="Pedidos">
+      <div class="flex flex-col h-[calc(100vh-4rem)]">
 
         <!-- Header -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 shrink-0">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Tablero de Pedidos</h1>
-                <p class="mt-1 text-sm text-gray-500">Gestión visual de tus órdenes.</p>
+                <p class="mt-1 text-sm text-gray-500">Gestiona tus pedidos arrastrando las tarjetas entre columnas.</p>
             </div>
 
             <!-- Monthly usage -->
-            <div class="flex items-center gap-4 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 min-w-[220px]">
-                <div class="flex-1">
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="text-xs font-semibold text-gray-700">Órdenes del mes</span>
-                        <span class="text-xs text-[#FF5722] font-medium">{{ monthly_count }}/{{ max_monthly_orders }}</span>
+            <div class="flex items-center gap-4 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 min-w-[280px]">
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold text-gray-700">Pedidos del periodo</span>
+                        <span class="text-sm text-[#FF5722] font-bold">{{ monthly_count }}/{{ orders_limit }}</span>
                     </div>
-                    <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                         <div
-                            class="h-full bg-[#FF5722] rounded-full transition-all"
+                            class="h-full bg-[#FF5722] rounded-full transition-[width] duration-300"
                             :style="{ width: monthlyPercent + '%' }"
                         ></div>
                     </div>
@@ -161,43 +217,102 @@ function onCardClick(orderId) {
         </div>
 
         <!-- Filters -->
-        <div class="flex flex-wrap items-center gap-4 mb-6">
+        <div class="flex flex-wrap items-center gap-3 mb-4 shrink-0">
+            <!-- Branch selector -->
             <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl">store</span>
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl" aria-hidden="true">store</span>
                 <select
                     v-model="branchId"
-                    class="pl-10 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50 appearance-none min-w-[200px]"
+                    aria-label="Filtrar por sucursal"
+                    name="branch_id"
+                    class="pl-10 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5722]/50 appearance-none min-w-[200px]"
                     @change="applyFilters"
                 >
                     <option value="">Todas las sucursales</option>
                     <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
                 </select>
-                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl pointer-events-none">arrow_drop_down</span>
+                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl pointer-events-none" aria-hidden="true">arrow_drop_down</span>
             </div>
-            <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl">calendar_today</span>
-                <input
-                    v-model="date"
-                    type="date"
-                    class="pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                    @change="applyFilters"
-                />
+
+            <!-- Date presets -->
+            <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl p-1">
+                <button
+                    v-for="p in [
+                        { key: 'today', label: 'Hoy', icon: 'today' },
+                        { key: 'yesterday', label: 'Ayer', icon: null },
+                        { key: 'week', label: '7 d\u00EDas', icon: null },
+                        { key: 'month', label: 'Mes', icon: null },
+                        { key: 'all', label: 'Todo', icon: null },
+                    ]"
+                    :key="p.key"
+                    @click="setPreset(p.key)"
+                    class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                    :class="activePreset === p.key
+                        ? 'bg-[#FF5722] text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50'"
+                >
+                    <span v-if="p.icon" class="material-symbols-outlined text-sm" aria-hidden="true">{{ p.icon }}</span>
+                    {{ p.label }}
+                </button>
+                <button
+                    @click="showCustomRange = !showCustomRange"
+                    class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                    :class="activePreset === 'custom'
+                        ? 'bg-[#FF5722] text-white shadow-sm'
+                        : showCustomRange
+                            ? 'bg-gray-100 text-gray-700'
+                            : 'text-gray-600 hover:bg-gray-50'"
+                    aria-label="Seleccionar rango personalizado"
+                >
+                    <span class="material-symbols-outlined text-sm" aria-hidden="true">date_range</span>
+                    Rango
+                </button>
             </div>
+
+            <!-- Date range label -->
+            <span class="text-sm text-gray-500 font-medium hidden sm:inline">
+                <span class="material-symbols-outlined text-base align-middle mr-0.5" aria-hidden="true">calendar_today</span>
+                {{ dateRangeLabel }}
+            </span>
+        </div>
+
+        <!-- Custom date range (collapsible) -->
+        <div
+            v-if="showCustomRange"
+            class="flex flex-wrap items-center gap-3 mb-4 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
+        >
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Desde</label>
+            <input
+                v-model="dateFrom"
+                type="date"
+                name="date_from"
+                aria-label="Fecha desde"
+                class="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5722]/50"
+                @change="applyFilters"
+            />
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Hasta</label>
+            <input
+                v-model="dateTo"
+                type="date"
+                name="date_to"
+                aria-label="Fecha hasta"
+                class="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5722]/50"
+                @change="applyFilters"
+            />
             <button
-                v-if="branchId || date"
-                class="text-sm text-gray-400 hover:text-gray-600 underline"
-                @click="branchId = ''; date = ''; applyFilters()"
+                class="text-xs text-[#FF5722] font-semibold hover:underline"
+                @click="dateFrom = ''; dateTo = ''; applyFilters()"
             >
-                Limpiar filtros
+                Limpiar
             </button>
         </div>
 
         <!-- Kanban columns -->
-        <div class="flex gap-6 overflow-x-auto pb-4">
+        <div class="flex gap-4 flex-1 min-h-0 overflow-hidden">
             <div
                 v-for="col in COLUMNS"
                 :key="col.key"
-                class="flex flex-col w-80 shrink-0"
+                class="flex flex-col flex-1 min-w-0"
             >
                 <!-- Column header -->
                 <div class="flex items-center gap-2 mb-4 px-1">
@@ -210,7 +325,7 @@ function onCardClick(orderId) {
 
                 <!-- Cards (drop zone) -->
                 <div
-                    class="flex flex-col gap-3 min-h-[80px] rounded-xl p-1 transition-all"
+                    class="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto rounded-xl p-1 transition-colors"
                     :class="dropTargetCol === col.key && isValidDropTarget(col.key) ? 'ring-2 ring-[#FF5722] ring-dashed bg-orange-50/50' : ''"
                     @dragover="onDragOverCol(col.key, $event)"
                     @dragleave="onDragLeaveCol($event)"
@@ -220,7 +335,7 @@ function onCardClick(orderId) {
                         v-for="order in localOrders[col.key]"
                         :key="order.id"
                         :draggable="col.key !== 'delivered'"
-                        class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all group border-l-4 select-none"
+                        class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow group border-l-4 select-none touch-manipulation"
                         :class="[
                             col.borderClass,
                             col.key === 'delivered' ? 'opacity-75 hover:opacity-100' : 'cursor-grab active:cursor-grabbing',
@@ -235,6 +350,7 @@ function onCardClick(orderId) {
                                 <span
                                     v-if="col.key !== 'delivered'"
                                     class="material-symbols-outlined text-gray-300 text-base"
+                                    aria-hidden="true"
                                 >drag_indicator</span>
                                 <span class="text-xs font-bold text-gray-400">{{ orderNumber(order.id) }}</span>
                             </div>
@@ -242,23 +358,23 @@ function onCardClick(orderId) {
                                 {{ formatTime(order.created_at) }}
                             </span>
                         </div>
-                        <h4 class="font-bold text-gray-800 mb-1" :class="col.key === 'delivered' ? 'line-through decoration-gray-400 text-gray-600' : ''">
-                            {{ order.customer?.name ?? '—' }}
+                        <h4 class="font-bold text-gray-800 mb-1 truncate" :class="col.key === 'delivered' ? 'line-through decoration-gray-400 text-gray-600' : ''">
+                            {{ order.customer?.name ?? '\u2014' }}
                         </h4>
-                        <p class="text-sm text-gray-500 mb-3 line-clamp-2">{{ order.branch?.name }}</p>
+                        <p class="text-sm text-gray-500 mb-3 truncate">{{ order.branch?.name }}</p>
                         <div class="flex items-center justify-between mt-auto">
                             <span class="font-bold text-gray-900">{{ formatPrice(order.total) }}</span>
                             <span
                                 v-if="col.key === 'delivered'"
                                 class="flex items-center gap-1 text-green-600 text-xs font-bold"
                             >
-                                <span class="material-symbols-outlined text-sm">check_circle</span> Completado
+                                <span class="material-symbols-outlined text-sm" aria-hidden="true">check_circle</span> Completado
                             </span>
                             <span
                                 v-else
-                                class="text-[#FF5722] text-sm font-medium flex items-center gap-1 group-hover:translate-x-1 transition-transform"
+                                class="text-[#FF5722] text-sm font-medium flex items-center gap-1 group-hover:translate-x-1 motion-reduce:transform-none transition-transform"
                             >
-                                Ver <span class="material-symbols-outlined text-base">arrow_forward</span>
+                                Ver <span class="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
                             </span>
                         </div>
                     </div>
@@ -274,5 +390,6 @@ function onCardClick(orderId) {
             </div>
         </div>
 
+      </div>
     </AppLayout>
 </template>

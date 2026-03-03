@@ -55,7 +55,7 @@ defineProps({
         <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                 <h2 class="text-base font-semibold text-gray-900">Restaurantes recientes</h2>
-                <Link :href="route('super.restaurants.index')" class="text-sm text-[#FF5722] hover:underline font-medium">Ver todos</Link>
+                <Link :href="route('super.restaurants.index')" class="text-sm text-[#FF5722] hover:underline font-semibold">Ver todos</Link>
             </div>
             <div class="divide-y divide-gray-50">
                 <div v-if="recent_restaurants.length === 0" class="px-6 py-8 text-center text-sm text-gray-400">
@@ -84,8 +84,8 @@ defineProps({
                         </span>
                         <Link
                             :href="route('super.restaurants.show', restaurant.id)"
-                            class="text-sm text-[#FF5722] hover:underline font-medium"
-                        >Ver</Link>
+                            class="text-sm font-semibold px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >Ver detalle</Link>
                     </div>
                 </div>
             </div>

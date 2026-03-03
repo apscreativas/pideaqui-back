@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Product;
 use App\Models\Restaurant;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -17,6 +18,7 @@ class ModifierGroupFactory extends Factory
     {
         return [
             'restaurant_id' => Restaurant::factory(),
+            'product_id' => Product::factory(),
             'name' => fake()->words(2, true),
             'selection_type' => fake()->randomElement(['single', 'multiple']),
             'is_required' => fake()->boolean(),

@@ -4,21 +4,17 @@ use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryMethodController;
 use App\Http\Controllers\DeliveryRangeController;
 use App\Http\Controllers\LimitsController;
+use App\Http\Controllers\MenuController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentMethodController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\QrCodeController;
-use App\Http\Controllers\SettingsController;
-use App\Http\Controllers\BranchScheduleController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\MenuController;
-use App\Http\Controllers\ModifierGroupController;
-use App\Http\Controllers\ModifierOptionController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SuperAdmin\AuthController as SuperAdminAuthController;
 use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
 use App\Http\Controllers\SuperAdmin\RestaurantController as SuperAdminRestaurantController;
@@ -28,13 +24,13 @@ use Illuminate\Support\Facades\Route;
 // ─── Admin Restaurante — Auth (guest) ────────────────────────────────────────
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [LoginController::class, 'create'])->name('login');
-    Route::post('/login', [LoginController::class, 'store']);
+    Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:5,1');
 
     Route::get('/forgot-password', [ForgotPasswordController::class, 'create'])->name('password.request');
-    Route::post('/forgot-password', [ForgotPasswordController::class, 'store'])->name('password.email');
+    Route::post('/forgot-password', [ForgotPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.email');
 
     Route::get('/reset-password/{token}', [ResetPasswordController::class, 'create'])->name('password.reset');
-    Route::post('/reset-password', [ResetPasswordController::class, 'store'])->name('password.update');
+    Route::post('/reset-password', [ResetPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.update');
 });
 
 // ─── Admin Restaurante — Panel (autenticado + tenant) ────────────────────────
@@ -65,10 +61,11 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
     Route::get('/settings/payment-methods', [PaymentMethodController::class, 'index'])->name('settings.payment-methods');
     Route::put('/settings/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->name('settings.payment-methods.update');
 
-    Route::get('/settings/qr-code', [QrCodeController::class, 'index'])->name('settings.qr-code');
-
     Route::get('/settings/profile', [ProfileController::class, 'edit'])->name('settings.profile');
     Route::put('/settings/profile', [ProfileController::class, 'update'])->name('settings.profile.update');
+
+    Route::get('/settings/schedules', [SettingsController::class, 'schedules'])->name('settings.schedules');
+    Route::put('/settings/schedules', [SettingsController::class, 'updateSchedules'])->name('settings.schedules.update');
 
     Route::get('/settings/limits', [LimitsController::class, 'index'])->name('settings.limits');
 
@@ -87,15 +84,6 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
     Route::delete('/menu/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::patch('/menu/products/{product}/toggle', [ProductController::class, 'toggle'])->name('products.toggle');
 
-    // ─── Modificadores ─────────────────────────────────────────────────────────
-    Route::get('/menu/modifiers', [ModifierGroupController::class, 'index'])->name('modifiers.index');
-    Route::post('/menu/modifiers', [ModifierGroupController::class, 'store'])->name('modifiers.store');
-    Route::put('/menu/modifiers/{modifierGroup}', [ModifierGroupController::class, 'update'])->name('modifiers.update');
-    Route::delete('/menu/modifiers/{modifierGroup}', [ModifierGroupController::class, 'destroy'])->name('modifiers.destroy');
-    Route::post('/menu/modifiers/{modifierGroup}/options', [ModifierOptionController::class, 'store'])->name('modifiers.options.store');
-    Route::put('/menu/modifiers/{modifierGroup}/options/{modifierOption}', [ModifierOptionController::class, 'update'])->name('modifiers.options.update');
-    Route::delete('/menu/modifiers/{modifierGroup}/options/{modifierOption}', [ModifierOptionController::class, 'destroy'])->name('modifiers.options.destroy');
-
     // ─── Sucursales ────────────────────────────────────────────────────────────
     Route::get('/branches', [BranchController::class, 'index'])->name('branches.index');
     Route::get('/branches/create', [BranchController::class, 'create'])->name('branches.create');
@@ -104,15 +92,13 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
     Route::put('/branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
     Route::delete('/branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
     Route::patch('/branches/{branch}/toggle', [BranchController::class, 'toggle'])->name('branches.toggle');
-    Route::get('/branches/{branch}/schedules', [BranchScheduleController::class, 'edit'])->name('branches.schedules.edit');
-    Route::put('/branches/{branch}/schedules', [BranchScheduleController::class, 'update'])->name('branches.schedules.update');
 });
 
 // ─── SuperAdmin ───────────────────────────────────────────────────────────────
 Route::prefix('super')->name('super.')->group(function (): void {
     Route::middleware('guest:superadmin')->group(function (): void {
         Route::get('/login', [SuperAdminAuthController::class, 'create'])->name('login');
-        Route::post('/login', [SuperAdminAuthController::class, 'store']);
+        Route::post('/login', [SuperAdminAuthController::class, 'store'])->middleware('throttle:5,1');
     });
 
     Route::middleware('auth:superadmin')->group(function (): void {
@@ -126,6 +112,7 @@ Route::prefix('super')->name('super.')->group(function (): void {
         Route::get('/restaurants/{restaurant}', [SuperAdminRestaurantController::class, 'show'])->name('restaurants.show');
         Route::put('/restaurants/{restaurant}/limits', [SuperAdminRestaurantController::class, 'updateLimits'])->name('restaurants.update-limits');
         Route::patch('/restaurants/{restaurant}/toggle', [SuperAdminRestaurantController::class, 'toggleActive'])->name('restaurants.toggle');
+        Route::post('/restaurants/{restaurant}/regenerate-token', [SuperAdminRestaurantController::class, 'regenerateToken'])->name('restaurants.regenerate-token');
 
         Route::get('/statistics', [SuperAdminStatisticsController::class, 'index'])->name('statistics');
     });

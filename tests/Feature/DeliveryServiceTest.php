@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
-use App\Models\BranchSchedule;
 use App\Models\DeliveryRange;
 use App\Models\Restaurant;
+use App\Models\RestaurantSchedule;
 use App\Services\GoogleMapsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -208,7 +208,7 @@ class DeliveryServiceTest extends TestCase
 
     // ─── Schedule validation ─────────────────────────────────────────────────
 
-    public function test_branch_with_no_schedule_is_always_open(): void
+    public function test_branch_with_no_schedule_returns_closed(): void
     {
         $this->instance(GoogleMapsService::class, $this->createMock(GoogleMapsService::class));
 
@@ -221,7 +221,7 @@ class DeliveryServiceTest extends TestCase
             'longitude' => -103.350000,
         ], $this->authHeaders($restaurant));
 
-        $response->assertOk()->assertJsonPath('data.is_open', true);
+        $response->assertOk()->assertJsonPath('data.is_open', false);
     }
 
     public function test_branch_with_closed_day_schedule_returns_not_open(): void
@@ -232,8 +232,8 @@ class DeliveryServiceTest extends TestCase
         $branch = $this->branchAt($restaurant, 20.659698, -103.349609);
         $this->addRanges($restaurant);
 
-        BranchSchedule::factory()->create([
-            'branch_id' => $branch->id,
+        RestaurantSchedule::factory()->create([
+            'restaurant_id' => $restaurant->id,
             'day_of_week' => now()->dayOfWeek,
             'opens_at' => '09:00',
             'closes_at' => '21:00',

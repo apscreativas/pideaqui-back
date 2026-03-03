@@ -37,22 +37,22 @@ function filterByStatus(value) {
         <div class="flex items-center gap-2 mb-5">
             <button
                 @click="filterByStatus('')"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                :class="!filters?.status ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
+                class="px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors"
+                :class="!filters?.status ? 'bg-[#FF5722] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
             >
                 Todos
             </button>
             <button
                 @click="filterByStatus('1')"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                :class="filters?.status === '1' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
+                class="px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors"
+                :class="filters?.status === '1' ? 'bg-[#FF5722] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
             >
                 Activos
             </button>
             <button
                 @click="filterByStatus('0')"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                :class="filters?.status === '0' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
+                class="px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors"
+                :class="filters?.status === '0' ? 'bg-[#FF5722] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
             >
                 Inactivos
             </button>
@@ -64,9 +64,9 @@ function filterByStatus(value) {
                 <thead>
                     <tr class="border-b border-gray-100 bg-gray-50">
                         <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Restaurante</th>
-                        <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedidos mes</th>
+                        <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedidos periodo</th>
                         <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sucursales</th>
-                        <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Límite mensual</th>
+                        <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Límite pedidos</th>
                         <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
                         <th class="px-6 py-3"></th>
                     </tr>
@@ -80,9 +80,9 @@ function filterByStatus(value) {
                             <p class="font-semibold text-gray-900">{{ restaurant.name }}</p>
                             <p class="text-xs text-gray-400">{{ restaurant.slug }}</p>
                         </td>
-                        <td class="px-6 py-4 text-gray-700">{{ restaurant.monthly_orders_count ?? 0 }}</td>
+                        <td class="px-6 py-4 text-gray-700">{{ restaurant.period_orders_count ?? 0 }}</td>
                         <td class="px-6 py-4 text-gray-700">{{ restaurant.active_branch_count ?? 0 }}</td>
-                        <td class="px-6 py-4 text-gray-700">{{ restaurant.max_monthly_orders }}</td>
+                        <td class="px-6 py-4 text-gray-700">{{ restaurant.orders_limit }}</td>
                         <td class="px-6 py-4">
                             <span
                                 class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -95,7 +95,7 @@ function filterByStatus(value) {
                             <div class="flex items-center justify-end gap-3">
                                 <button
                                     @click="toggleActive(restaurant)"
-                                    class="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                                    class="text-sm font-semibold px-3 py-1.5 rounded-xl border transition-colors"
                                     :class="restaurant.is_active
                                         ? 'border-red-200 text-red-600 hover:bg-red-50'
                                         : 'border-green-200 text-green-600 hover:bg-green-50'"
@@ -104,7 +104,7 @@ function filterByStatus(value) {
                                 </button>
                                 <Link
                                     :href="route('super.restaurants.show', restaurant.id)"
-                                    class="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                                    class="text-sm font-semibold px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                                 >
                                     Ver detalle
                                 </Link>
@@ -121,12 +121,12 @@ function filterByStatus(value) {
                     <Link
                         v-if="restaurants.prev_page_url"
                         :href="restaurants.prev_page_url"
-                        class="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                        class="px-3 py-1.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                     >Anterior</Link>
                     <Link
                         v-if="restaurants.next_page_url"
                         :href="restaurants.next_page_url"
-                        class="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                        class="px-3 py-1.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                     >Siguiente</Link>
                 </div>
             </div>

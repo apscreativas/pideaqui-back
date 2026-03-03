@@ -7,14 +7,35 @@ use App\Models\Restaurant;
 
 class LimitService
 {
-    public function isMonthlyLimitReached(Restaurant $restaurant): bool
+    public function isOrderLimitReached(Restaurant $restaurant): bool
     {
+        if (! $restaurant->orders_limit_start || ! $restaurant->orders_limit_end) {
+            return false;
+        }
+
         $count = Order::query()
             ->where('restaurant_id', $restaurant->id)
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
+            ->whereBetween('created_at', [
+                $restaurant->orders_limit_start->startOfDay(),
+                $restaurant->orders_limit_end->endOfDay(),
+            ])
             ->count();
 
-        return $count >= $restaurant->max_monthly_orders;
+        return $count >= $restaurant->orders_limit;
+    }
+
+    public function orderCountInPeriod(Restaurant $restaurant): int
+    {
+        if (! $restaurant->orders_limit_start || ! $restaurant->orders_limit_end) {
+            return 0;
+        }
+
+        return Order::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->whereBetween('created_at', [
+                $restaurant->orders_limit_start->startOfDay(),
+                $restaurant->orders_limit_end->endOfDay(),
+            ])
+            ->count();
     }
 }

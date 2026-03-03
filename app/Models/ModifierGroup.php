@@ -6,7 +6,6 @@ use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ModifierGroup extends Model
@@ -18,6 +17,7 @@ class ModifierGroup extends Model
 
     protected $fillable = [
         'restaurant_id',
+        'product_id',
         'name',
         'selection_type',
         'is_required',
@@ -37,9 +37,9 @@ class ModifierGroup extends Model
         return $this->belongsTo(Restaurant::class);
     }
 
-    public function products(): BelongsToMany
+    public function product(): BelongsTo
     {
-        return $this->belongsToMany(Product::class);
+        return $this->belongsTo(Product::class);
     }
 
     public function options(): HasMany

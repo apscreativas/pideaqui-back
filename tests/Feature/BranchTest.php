@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
-use App\Models\BranchSchedule;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,9 +49,6 @@ class BranchTest extends TestCase
             'restaurant_id' => $restaurant->id,
         ]);
 
-        // Verify 7 default schedules were created
-        $branch = Branch::query()->where('name', 'Sucursal Centro')->first();
-        $this->assertEquals(7, $branch->schedules()->count());
     }
 
     public function test_admin_cannot_exceed_max_branches(): void
@@ -89,51 +85,6 @@ class BranchTest extends TestCase
         );
     }
 
-    public function test_admin_can_update_branch_schedules(): void
-    {
-        [$user, $restaurant] = $this->createAdminWithRestaurant();
-        $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
-
-        // Create schedules for all 7 days
-        for ($day = 0; $day <= 6; $day++) {
-            BranchSchedule::factory()->create([
-                'branch_id' => $branch->id,
-                'day_of_week' => $day,
-                'opens_at' => '09:00',
-                'closes_at' => '21:00',
-                'is_closed' => false,
-            ]);
-        }
-
-        $schedules = collect(range(0, 6))->map(fn ($day) => [
-            'day_of_week' => $day,
-            'opens_at' => '10:00',
-            'closes_at' => '22:00',
-            'is_closed' => $day === 0, // Sunday closed
-        ])->all();
-
-        $response = $this->withoutVite()->actingAs($user)->put(
-            route('branches.schedules.update', $branch->id),
-            ['schedules' => $schedules]
-        );
-
-        $response->assertRedirect(route('branches.index'));
-
-        $this->assertDatabaseHas('branch_schedules', [
-            'branch_id' => $branch->id,
-            'day_of_week' => 1,
-            'opens_at' => '10:00',
-            'closes_at' => '22:00',
-            'is_closed' => false,
-        ]);
-
-        $this->assertDatabaseHas('branch_schedules', [
-            'branch_id' => $branch->id,
-            'day_of_week' => 0,
-            'is_closed' => true,
-        ]);
-    }
-
     public function test_admin_cannot_update_branch_from_another_restaurant(): void
     {
         [$user] = $this->createAdminWithRestaurant();
@@ -149,5 +100,72 @@ class BranchTest extends TestCase
         // TenantScope filters out the other restaurant's branch before reaching the Policy,
         // so the model is not found (404), which is the correct and secure behavior.
         $response->assertNotFound();
+    }
+
+    public function test_cannot_toggle_last_active_branch(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant(['max_branches' => 3]);
+        $branch = Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->patch(route('branches.toggle', $branch->id));
+
+        $response->assertRedirect(route('branches.index'));
+        $response->assertSessionHas('error');
+        $this->assertTrue($branch->fresh()->is_active);
+    }
+
+    public function test_cannot_delete_last_active_branch(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant(['max_branches' => 3]);
+        $branch = Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->delete(route('branches.destroy', $branch->id));
+
+        $response->assertRedirect(route('branches.index'));
+        $response->assertSessionHas('error');
+        $this->assertDatabaseHas('branches', ['id' => $branch->id]);
+    }
+
+    public function test_can_toggle_active_branch_when_multiple_active(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant(['max_branches' => 3]);
+        $branch1 = Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+        Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->patch(route('branches.toggle', $branch1->id));
+
+        $response->assertRedirect(route('branches.index'));
+        $this->assertFalse($branch1->fresh()->is_active);
+    }
+
+    public function test_can_delete_active_branch_when_multiple_active(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant(['max_branches' => 3]);
+        $branch1 = Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+        Branch::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->delete(route('branches.destroy', $branch1->id));
+
+        $response->assertRedirect(route('branches.index'));
+        $response->assertSessionHas('success');
+        $this->assertDatabaseMissing('branches', ['id' => $branch1->id]);
     }
 }

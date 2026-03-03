@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class Restaurant extends Model
@@ -22,11 +23,17 @@ class Restaurant extends Model
         'allows_delivery',
         'allows_pickup',
         'allows_dine_in',
-        'max_monthly_orders',
+        'orders_limit',
+        'orders_limit_start',
+        'orders_limit_end',
         'max_branches',
         'instagram',
         'facebook',
         'tiktok',
+    ];
+
+    protected $hidden = [
+        'access_token',
     ];
 
     protected function casts(): array
@@ -36,7 +43,9 @@ class Restaurant extends Model
             'allows_delivery' => 'boolean',
             'allows_pickup' => 'boolean',
             'allows_dine_in' => 'boolean',
-            'max_monthly_orders' => 'integer',
+            'orders_limit' => 'integer',
+            'orders_limit_start' => 'date',
+            'orders_limit_end' => 'date',
             'max_branches' => 'integer',
         ];
     }
@@ -90,5 +99,33 @@ class Restaurant extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function schedules(): HasMany
+    {
+        return $this->hasMany(RestaurantSchedule::class)->orderBy('day_of_week');
+    }
+
+    public function isCurrentlyOpen(): bool
+    {
+        $now = Carbon::now();
+        $schedule = $this->schedules->firstWhere('day_of_week', $now->dayOfWeek);
+
+        if (! $schedule || $schedule->is_closed) {
+            return false;
+        }
+
+        if (! $schedule->opens_at || ! $schedule->closes_at) {
+            return false;
+        }
+
+        $currentTime = $now->format('H:i:s');
+
+        // Overnight schedule (e.g., 20:00–02:00): open if current time is after open OR before close.
+        if ($schedule->opens_at > $schedule->closes_at) {
+            return $currentTime >= $schedule->opens_at || $currentTime <= $schedule->closes_at;
+        }
+
+        return $currentTime >= $schedule->opens_at && $currentTime <= $schedule->closes_at;
     }
 }

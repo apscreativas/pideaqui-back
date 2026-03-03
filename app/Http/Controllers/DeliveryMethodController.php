@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateDeliveryMethodsRequest;
+use App\Models\DeliveryRange;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,8 +15,11 @@ class DeliveryMethodController extends Controller
     {
         $restaurant = $request->user()->load('restaurant')->restaurant;
 
+        $hasDeliveryRanges = DeliveryRange::where('restaurant_id', $restaurant->id)->exists();
+
         return Inertia::render('Settings/DeliveryMethods', [
             'restaurant' => $restaurant->only(['allows_delivery', 'allows_pickup', 'allows_dine_in']),
+            'has_delivery_ranges' => $hasDeliveryRanges,
         ]);
     }
 

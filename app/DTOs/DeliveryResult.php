@@ -3,7 +3,7 @@
 namespace App\DTOs;
 
 use App\Models\Branch;
-use App\Models\BranchSchedule;
+use App\Models\RestaurantSchedule;
 
 readonly class DeliveryResult
 {
@@ -14,6 +14,6 @@ readonly class DeliveryResult
         public float $deliveryCost,
         public bool $isInCoverage,
         public bool $isOpen,
-        public ?BranchSchedule $schedule = null,
+        public ?RestaurantSchedule $schedule = null,
     ) {}
 }

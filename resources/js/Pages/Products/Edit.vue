@@ -6,7 +6,6 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 const props = defineProps({
     product: Object,
     categories: Array,
-    allModifierGroups: Array,
 })
 
 const imagePreview = ref(props.product.image_url ?? null)
@@ -21,7 +20,18 @@ const form = useForm({
     sort_order: props.product.sort_order ?? 0,
     is_active: props.product.is_active,
     image: null,
-    modifier_group_ids: (props.product.modifier_groups || []).map(g => g.id),
+    modifier_groups: (props.product.modifier_groups || []).map(g => ({
+        id: g.id,
+        name: g.name,
+        selection_type: g.selection_type,
+        is_required: g.is_required,
+        options: (g.options || []).map(o => ({
+            id: o.id,
+            name: o.name,
+            price_adjustment: parseFloat(o.price_adjustment) || 0,
+            production_cost: parseFloat(o.production_cost) || 0,
+        })),
+    })),
 })
 
 function handleImageChange(event) {
@@ -29,6 +39,28 @@ function handleImageChange(event) {
     if (!file) { return }
     form.image = file
     imagePreview.value = URL.createObjectURL(file)
+}
+
+function addModifierGroup() {
+    form.modifier_groups.push({
+        id: null,
+        name: '',
+        selection_type: 'single',
+        is_required: false,
+        options: [{ id: null, name: '', price_adjustment: 0, production_cost: 0 }],
+    })
+}
+
+function removeModifierGroup(index) {
+    form.modifier_groups.splice(index, 1)
+}
+
+function addOption(groupIndex) {
+    form.modifier_groups[groupIndex].options.push({ id: null, name: '', price_adjustment: 0, production_cost: 0 })
+}
+
+function removeOption(groupIndex, optionIndex) {
+    form.modifier_groups[groupIndex].options.splice(optionIndex, 1)
 }
 
 function submit() {
@@ -125,27 +157,127 @@ function submit() {
                 </div>
 
                 <!-- Modificadores -->
-                <div v-if="allModifierGroups && allModifierGroups.length > 0" class="bg-white rounded-2xl border border-gray-100 p-6">
-                    <div class="flex items-center gap-2 mb-4">
-                        <span class="material-symbols-outlined text-[#FF5722]" style="font-variation-settings:'FILL' 1">tune</span>
-                        <h2 class="font-semibold text-gray-900">Grupos de Modificadores</h2>
-                    </div>
-                    <p class="text-xs text-gray-400 mb-3">Selecciona los grupos de modificadores disponibles para este producto.</p>
-                    <div class="space-y-2">
-                        <label
-                            v-for="mg in allModifierGroups"
-                            :key="mg.id"
-                            class="flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors"
-                            :class="form.modifier_group_ids.includes(mg.id) ? 'border-[#FF5722] bg-orange-50/50' : 'border-gray-100 hover:bg-gray-50'"
+                <div class="bg-white rounded-2xl border border-gray-100 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[#FF5722]" style="font-variation-settings:'FILL' 1">tune</span>
+                            <h2 class="font-semibold text-gray-900">Modificadores</h2>
+                        </div>
+                        <button
+                            type="button"
+                            @click="addModifierGroup"
+                            class="flex items-center gap-1.5 text-sm font-medium text-[#FF5722] hover:text-[#D84315] transition-colors"
                         >
-                            <input
-                                type="checkbox"
-                                :value="mg.id"
-                                v-model="form.modifier_group_ids"
-                                class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
-                            />
-                            <span class="text-sm text-gray-700">{{ mg.name }}</span>
-                        </label>
+                            <span class="material-symbols-outlined text-lg">add</span>
+                            Agregar grupo
+                        </button>
+                    </div>
+
+                    <p v-if="form.modifier_groups.length === 0" class="text-sm text-gray-400">
+                        No hay grupos de modificadores. Agrega uno para ofrecer opciones como tamaño, extras, etc.
+                    </p>
+
+                    <div v-else class="space-y-4">
+                        <div
+                            v-for="(group, gi) in form.modifier_groups"
+                            :key="gi"
+                            class="border border-gray-200 rounded-xl p-4"
+                        >
+                            <!-- Group header -->
+                            <div class="flex items-start gap-3 mb-3">
+                                <div class="flex-1 space-y-3">
+                                    <input
+                                        v-model="group.name"
+                                        type="text"
+                                        placeholder="Nombre del grupo (ej: Elige tu tortilla)"
+                                        class="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                    />
+                                    <div class="flex items-center gap-4">
+                                        <select
+                                            v-model="group.selection_type"
+                                            class="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                        >
+                                            <option value="single">Selección única</option>
+                                            <option value="multiple">Selección múltiple</option>
+                                        </select>
+                                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                v-model="group.is_required"
+                                                class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
+                                            />
+                                            Obligatorio
+                                        </label>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="removeModifierGroup(gi)"
+                                    class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                                    title="Eliminar grupo"
+                                >
+                                    <span class="material-symbols-outlined text-lg">delete</span>
+                                </button>
+                            </div>
+
+                            <!-- Options -->
+                            <div class="space-y-2 ml-2">
+                                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Opciones</p>
+                                <div
+                                    v-for="(option, oi) in group.options"
+                                    :key="oi"
+                                    class="flex items-center gap-2"
+                                >
+                                    <input
+                                        v-model="option.name"
+                                        type="text"
+                                        placeholder="Nombre de opción"
+                                        class="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                    />
+                                    <div class="relative w-24">
+                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                        <input
+                                            v-model.number="option.price_adjustment"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="Precio"
+                                            class="w-full rounded-lg border border-gray-200 pl-6 pr-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                            title="Precio adicional"
+                                        />
+                                    </div>
+                                    <div class="relative w-24">
+                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#FF5722] text-xs">$</span>
+                                        <input
+                                            v-model.number="option.production_cost"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="Costo"
+                                            class="w-full rounded-lg border border-gray-200 pl-6 pr-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                            title="Costo de producción"
+                                        />
+                                    </div>
+                                    <button
+                                        v-if="group.options.length > 1"
+                                        type="button"
+                                        @click="removeOption(gi, oi)"
+                                        class="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                                        title="Eliminar opción"
+                                    >
+                                        <span class="material-symbols-outlined text-base">close</span>
+                                    </button>
+                                    <div v-else class="w-6" />
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="addOption(gi)"
+                                    class="text-xs font-medium text-[#FF5722] hover:text-[#D84315] transition-colors mt-1"
+                                >
+                                    + Agregar opción
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

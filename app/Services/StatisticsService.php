@@ -4,33 +4,27 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\Order;
+use App\Models\Restaurant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class StatisticsService
 {
     /** @return array<string, mixed> */
-    public function getDashboardData(int $restaurantId, int $maxMonthlyOrders): array
+    public function getDashboardData(Restaurant $restaurant): array
     {
-        return [
-            'today_orders_count' => $this->todayCount($restaurantId),
-            'yesterday_orders_count' => $this->yesterdayCount($restaurantId),
-            'preparing_orders_count' => $this->preparingCount($restaurantId),
-            'monthly_orders_count' => $this->monthlyCount($restaurantId),
-            'max_monthly_orders' => $maxMonthlyOrders,
-            'net_profit_month' => $this->netProfitMonth($restaurantId),
-            'orders_by_branch' => $this->ordersByBranch($restaurantId),
-            'recent_orders' => $this->recentOrders($restaurantId),
-        ];
-    }
+        $limitService = app(LimitService::class);
 
-    public function monthlyCount(int $restaurantId): int
-    {
-        return Order::query()
-            ->where('restaurant_id', $restaurantId)
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->count();
+        return [
+            'today_orders_count' => $this->todayCount($restaurant->id),
+            'yesterday_orders_count' => $this->yesterdayCount($restaurant->id),
+            'preparing_orders_count' => $this->preparingCount($restaurant->id),
+            'monthly_orders_count' => $limitService->orderCountInPeriod($restaurant),
+            'orders_limit' => $restaurant->orders_limit,
+            'net_profit_month' => $this->netProfitMonth($restaurant->id),
+            'orders_by_branch' => $this->ordersByBranch($restaurant->id),
+            'recent_orders' => $this->recentOrders($restaurant->id),
+        ];
     }
 
     private function todayCount(int $restaurantId): int
@@ -69,16 +63,18 @@ class StatisticsService
             ->selectRaw('COALESCE(SUM(oi.unit_price * oi.quantity) - SUM(p.production_cost * oi.quantity), 0) as profit')
             ->value('profit');
 
-        // Add modifier revenue (no production cost tracked for modifiers)
-        $modifierRevenue = (float) DB::table('order_item_modifiers as oim')
+        // Modifier profit = price_adjustment revenue - modifier production cost
+        $modifierProfit = (float) DB::table('order_item_modifiers as oim')
             ->join('order_items as oi', 'oim.order_item_id', '=', 'oi.id')
             ->join('orders as o', 'oi.order_id', '=', 'o.id')
+            ->join('modifier_options as mo', 'oim.modifier_option_id', '=', 'mo.id')
             ->where('o.restaurant_id', $restaurantId)
             ->whereMonth('o.created_at', now()->month)
             ->whereYear('o.created_at', now()->year)
-            ->sum('oim.price_adjustment');
+            ->selectRaw('COALESCE(SUM(oim.price_adjustment) - SUM(mo.production_cost), 0) as profit')
+            ->value('profit');
 
-        return round($baseProfit + $modifierRevenue, 2);
+        return round($baseProfit + $modifierProfit, 2);
     }
 
     /** @return Collection<int, array{id: int, name: string, count: int}> */
