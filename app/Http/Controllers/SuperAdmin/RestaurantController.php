@@ -66,6 +66,9 @@ class RestaurantController extends Controller
                 'orders_limit_start' => $data['orders_limit_start'],
                 'orders_limit_end' => $data['orders_limit_end'],
                 'max_branches' => $data['max_branches'],
+                'allows_delivery' => false,
+                'allows_pickup' => true,
+                'allows_dine_in' => false,
             ]);
 
             $user = new User([
