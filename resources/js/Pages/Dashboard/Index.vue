@@ -1,21 +1,54 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
+import { ref, watch } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
-    today_orders_count: Number,
-    yesterday_orders_count: Number,
+    orders_count: Number,
     preparing_orders_count: Number,
     monthly_orders_count: Number,
     orders_limit: Number,
-    net_profit_month: Number,
+    net_profit: Number,
+    revenue: Number,
     orders_by_branch: Array,
     recent_orders: Array,
+    filters: Object,
 })
+
+const from = ref(props.filters.from)
+const to = ref(props.filters.to)
+
+function applyFilter() {
+    router.get(route('dashboard'), { from: from.value, to: to.value }, { preserveState: true, preserveScroll: true })
+}
+
+function setPreset(preset) {
+    const today = new Date()
+    const fmt = (d) => d.toISOString().slice(0, 10)
+
+    if (preset === 'today') {
+        from.value = fmt(today)
+        to.value = fmt(today)
+    } else if (preset === 'yesterday') {
+        const y = new Date(today)
+        y.setDate(y.getDate() - 1)
+        from.value = fmt(y)
+        to.value = fmt(y)
+    } else if (preset === 'week') {
+        const w = new Date(today)
+        w.setDate(w.getDate() - 6)
+        from.value = fmt(w)
+        to.value = fmt(today)
+    } else if (preset === 'month') {
+        from.value = fmt(new Date(today.getFullYear(), today.getMonth(), 1))
+        to.value = fmt(today)
+    }
+    applyFilter()
+}
 
 const monthlyPercent = Math.min(
     100,
-    Math.round((props.monthly_orders_count / props.orders_limit) * 100),
+    props.orders_limit ? Math.round((props.monthly_orders_count / props.orders_limit) * 100) : 0,
 )
 
 const maxBranchCount = props.orders_by_branch.length
@@ -31,8 +64,10 @@ function formatPrice(value) {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value)
 }
 
-function formatTime(dateStr) {
-    return new Date(dateStr).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+function formatDateTime(dateStr) {
+    return new Date(dateStr).toLocaleString('es-MX', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
 }
 
 function orderNumber(id) {
@@ -59,43 +94,73 @@ const DELIVERY_LABELS = {
     dine_in: 'Restaurante',
 }
 
-const todayDiff = props.yesterday_orders_count > 0
-    ? Math.round(((props.today_orders_count - props.yesterday_orders_count) / props.yesterday_orders_count) * 100)
-    : null
+const isToday = from.value === to.value && from.value === new Date().toISOString().slice(0, 10)
 </script>
 
 <template>
     <Head title="Dashboard" />
     <AppLayout title="Dashboard">
 
-        <!-- Header -->
-        <div class="flex items-start justify-between mb-8">
+        <!-- Header + Date filter -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
                 <p class="mt-1 text-sm text-gray-500">Resumen de tu restaurante.</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Presets -->
+                <div class="flex gap-1">
+                    <button
+                        @click="setPreset('today')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                        :class="isToday ? 'bg-[#FF5722] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    >Hoy</button>
+                    <button
+                        @click="setPreset('yesterday')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                    >Ayer</button>
+                    <button
+                        @click="setPreset('week')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                    >7 días</button>
+                    <button
+                        @click="setPreset('month')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                    >Mes</button>
+                </div>
+
+                <!-- Date inputs -->
+                <div class="flex items-center gap-1.5">
+                    <input
+                        type="date"
+                        v-model="from"
+                        @change="applyFilter"
+                        class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
+                    />
+                    <span class="text-gray-400 text-xs">—</span>
+                    <input
+                        type="date"
+                        v-model="to"
+                        @change="applyFilter"
+                        class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
+                    />
+                </div>
             </div>
         </div>
 
         <!-- KPI Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
 
-            <!-- Pedidos hoy -->
+            <!-- Pedidos en rango -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                 <div class="flex justify-between items-start mb-4">
                     <div class="p-2 bg-blue-50 rounded-lg">
                         <span class="material-symbols-outlined text-blue-600">receipt_long</span>
                     </div>
-                    <span
-                        v-if="todayDiff !== null"
-                        class="flex items-center text-xs font-medium px-2 py-1 rounded-full"
-                        :class="todayDiff >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'"
-                    >
-                        <span class="material-symbols-outlined text-sm mr-0.5">{{ todayDiff >= 0 ? 'trending_up' : 'trending_down' }}</span>
-                        {{ todayDiff >= 0 ? '+' : '' }}{{ todayDiff }}%
-                    </span>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos de hoy</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ today_orders_count }}</h3>
+                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ orders_count }}</h3>
             </div>
 
             <!-- En preparación -->
@@ -110,25 +175,15 @@ const todayDiff = props.yesterday_orders_count > 0
                 <h3 class="text-3xl font-bold text-gray-900">{{ preparing_orders_count }}</h3>
             </div>
 
-            <!-- Pedidos mensuales -->
+            <!-- Ventas -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                 <div class="flex justify-between items-start mb-4">
-                    <div class="p-2 bg-purple-50 rounded-lg">
-                        <span class="material-symbols-outlined text-purple-600">calendar_month</span>
+                    <div class="p-2 bg-emerald-50 rounded-lg">
+                        <span class="material-symbols-outlined text-emerald-600">point_of_sale</span>
                     </div>
-                    <span class="text-xs font-medium text-gray-500">Meta: {{ orders_limit }}</span>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos del periodo</p>
-                <div class="flex items-baseline gap-2 mb-2">
-                    <h3 class="text-3xl font-bold text-gray-900">{{ monthly_orders_count }}</h3>
-                    <span class="text-sm text-gray-400">/ {{ orders_limit }}</span>
-                </div>
-                <div class="w-full bg-gray-100 rounded-full h-1.5">
-                    <div
-                        class="bg-purple-500 h-1.5 rounded-full transition-all"
-                        :style="{ width: monthlyPercent + '%' }"
-                    ></div>
-                </div>
+                <p class="text-sm font-medium text-gray-500 mb-1">Ventas</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(revenue) }}</h3>
             </div>
 
             <!-- Ganancia neta -->
@@ -138,19 +193,19 @@ const todayDiff = props.yesterday_orders_count > 0
                         <span class="material-symbols-outlined text-green-600">payments</span>
                     </div>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Ganancia neta (mes)</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(net_profit_month) }}</h3>
+                <p class="text-sm font-medium text-gray-500 mb-1">Ganancia neta</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(net_profit) }}</h3>
             </div>
 
         </div>
 
-        <!-- Charts + Recent orders -->
+        <!-- Limit bar + Charts -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
 
             <!-- Pedidos por sucursal -->
             <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-lg font-bold text-gray-900">Pedidos por sucursal (últimos 7 días)</h3>
+                    <h3 class="text-lg font-bold text-gray-900">Pedidos por sucursal</h3>
                     <Link
                         :href="route('branches.index')"
                         class="text-sm text-[#FF5722] hover:text-[#D84315] font-medium flex items-center gap-1"
@@ -175,19 +230,25 @@ const todayDiff = props.yesterday_orders_count > 0
                 <p v-else class="text-sm text-gray-400 text-center py-8">Sin datos de sucursales.</p>
             </div>
 
-            <!-- Pedidos de ayer vs hoy -->
+            <!-- Límite del periodo -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                <h3 class="text-lg font-bold text-gray-900 mb-6">Comparativa diaria</h3>
-                <div class="space-y-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-6">Límite del periodo</h3>
+                <div class="space-y-4">
                     <div>
-                        <p class="text-sm text-gray-500 mb-1">Hoy</p>
-                        <p class="text-4xl font-bold text-gray-900">{{ today_orders_count }}</p>
+                        <p class="text-sm text-gray-500 mb-1">Pedidos del periodo</p>
+                        <div class="flex items-baseline gap-2">
+                            <p class="text-4xl font-bold text-gray-900">{{ monthly_orders_count }}</p>
+                            <span class="text-sm text-gray-400">/ {{ orders_limit }}</span>
+                        </div>
                     </div>
-                    <div class="h-px bg-gray-100"></div>
-                    <div>
-                        <p class="text-sm text-gray-500 mb-1">Ayer</p>
-                        <p class="text-4xl font-bold text-gray-400">{{ yesterday_orders_count }}</p>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                        <div
+                            class="h-2 rounded-full transition-all"
+                            :class="monthlyPercent >= 90 ? 'bg-red-500' : monthlyPercent >= 70 ? 'bg-amber-500' : 'bg-purple-500'"
+                            :style="{ width: monthlyPercent + '%' }"
+                        ></div>
                     </div>
+                    <p class="text-xs text-gray-400">{{ monthlyPercent }}% utilizado</p>
                 </div>
                 <Link
                     :href="route('orders.index')"
@@ -216,12 +277,15 @@ const todayDiff = props.yesterday_orders_count > 0
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedido</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha/hora</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sucursal</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipo</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Subtotal</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Envío</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Acción</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
@@ -231,10 +295,15 @@ const todayDiff = props.yesterday_orders_count > 0
                             class="hover:bg-gray-50/50 transition-colors"
                         >
                             <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ orderNumber(order.id) }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ formatDateTime(order.created_at) }}</td>
                             <td class="px-6 py-4 text-sm text-gray-700">{{ order.customer?.name ?? '—' }}</td>
                             <td class="px-6 py-4 text-sm text-gray-600">{{ order.branch?.name ?? '—' }}</td>
                             <td class="px-6 py-4 text-sm text-gray-600">{{ DELIVERY_LABELS[order.delivery_type] ?? order.delivery_type }}</td>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ formatPrice(order.total) }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-600 text-right">{{ formatPrice(order.subtotal) }}</td>
+                            <td class="px-6 py-4 text-sm text-right" :class="Number(order.delivery_cost) > 0 ? 'text-gray-600' : 'text-gray-300'">
+                                {{ Number(order.delivery_cost) > 0 ? formatPrice(order.delivery_cost) : '—' }}
+                            </td>
+                            <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{{ formatPrice(order.total) }}</td>
                             <td class="px-6 py-4">
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -253,8 +322,8 @@ const todayDiff = props.yesterday_orders_count > 0
                             </td>
                         </tr>
                         <tr v-if="!recent_orders.length">
-                            <td colspan="7" class="px-6 py-12 text-center text-sm text-gray-400">
-                                Aún no hay pedidos registrados.
+                            <td colspan="10" class="px-6 py-12 text-center text-sm text-gray-400">
+                                No hay pedidos en este periodo.
                             </td>
                         </tr>
                     </tbody>

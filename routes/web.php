@@ -21,6 +21,8 @@ use App\Http\Controllers\SuperAdmin\RestaurantController as SuperAdminRestaurant
 use App\Http\Controllers\SuperAdmin\StatisticsController as SuperAdminStatisticsController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/', fn () => redirect()->route('login'));
+
 // ─── Admin Restaurante — Auth (guest) ────────────────────────────────────────
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [LoginController::class, 'create'])->name('login');

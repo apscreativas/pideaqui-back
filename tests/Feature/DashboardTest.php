@@ -40,14 +40,15 @@ class DashboardTest extends TestCase
 
         $response->assertInertia(fn ($page) => $page
             ->component('Dashboard/Index')
-            ->has('today_orders_count')
-            ->has('yesterday_orders_count')
+            ->has('orders_count')
             ->has('preparing_orders_count')
             ->has('monthly_orders_count')
             ->has('orders_limit')
-            ->has('net_profit_month')
+            ->has('net_profit')
+            ->has('revenue')
             ->has('orders_by_branch')
             ->has('recent_orders')
+            ->has('filters')
         );
     }
 
@@ -77,17 +78,17 @@ class DashboardTest extends TestCase
 
         $response->assertInertia(fn ($page) => $page
             ->component('Dashboard/Index')
-            ->where('today_orders_count', 3)
+            ->where('orders_count', 3)
         );
     }
 
-    public function test_dashboard_recent_orders_max_ten(): void
+    public function test_dashboard_recent_orders_max_twenty(): void
     {
         [$user, $restaurant] = $this->createAdminWithRestaurant();
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
         $customer = Customer::factory()->create();
 
-        Order::factory()->count(15)->create([
+        Order::factory()->count(25)->create([
             'restaurant_id' => $restaurant->id,
             'branch_id' => $branch->id,
             'customer_id' => $customer->id,
@@ -97,13 +98,87 @@ class DashboardTest extends TestCase
 
         $response->assertInertia(fn ($page) => $page
             ->component('Dashboard/Index')
-            ->has('recent_orders', 10)
+            ->has('recent_orders', 20)
+        );
+    }
+
+    public function test_dashboard_filters_by_date_range(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
+        $customer = Customer::factory()->create();
+
+        // 2 orders today
+        Order::factory()->count(2)->create([
+            'restaurant_id' => $restaurant->id,
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+        ]);
+
+        // 1 order yesterday
+        Order::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'created_at' => now()->subDay(),
+        ]);
+
+        // Filter only today
+        $response = $this->withoutVite()->actingAs($user)->get(route('dashboard', [
+            'from' => now()->toDateString(),
+            'to' => now()->toDateString(),
+        ]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('orders_count', 2)
+        );
+
+        // Filter yesterday only
+        $response = $this->withoutVite()->actingAs($user)->get(route('dashboard', [
+            'from' => now()->subDay()->toDateString(),
+            'to' => now()->subDay()->toDateString(),
+        ]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('orders_count', 1)
+        );
+    }
+
+    public function test_dashboard_recent_orders_include_financial_fields(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
+        $customer = Customer::factory()->create();
+
+        Order::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'subtotal' => 150.00,
+            'delivery_cost' => 25.00,
+            'total' => 175.00,
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('dashboard'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->has('recent_orders.0.subtotal')
+            ->has('recent_orders.0.delivery_cost')
+            ->has('recent_orders.0.total')
+            ->has('recent_orders.0.created_at')
         );
     }
 
     public function test_unauthenticated_user_redirected_from_dashboard(): void
     {
         $response = $this->get(route('dashboard'));
+
+        $response->assertRedirect(route('login'));
+    }
+
+    public function test_root_url_redirects_to_login(): void
+    {
+        $response = $this->get('/');
 
         $response->assertRedirect(route('login'));
     }
