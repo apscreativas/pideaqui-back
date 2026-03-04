@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
     order: Object,
+    mapsKey: { type: String, default: '' },
 })
 
 const STATUS_STEPS = [
@@ -31,8 +32,6 @@ const DELIVERY_ICONS = {
     pickup:   'store',
     dine_in:  'restaurant',
 }
-
-const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_KEY ?? ''
 
 const PAYMENT_LABELS = {
     cash:     'Efectivo',

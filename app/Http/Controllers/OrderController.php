@@ -64,7 +64,10 @@ class OrderController extends Controller
 
         $order->load(['customer', 'branch', 'items.product', 'items.modifiers.modifierOption']);
 
-        return Inertia::render('Orders/Show', ['order' => $order]);
+        return Inertia::render('Orders/Show', [
+            'order' => $order,
+            'mapsKey' => config('services.google_maps.key', ''),
+        ]);
     }
 
     public function advanceStatus(AdvanceOrderStatusRequest $request, Order $order): RedirectResponse
