@@ -29,6 +29,8 @@ class DashboardController extends Controller
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
         ];
+        $data['orders_limit_start'] = $restaurant->orders_limit_start?->toDateString();
+        $data['orders_limit_end'] = $restaurant->orders_limit_end?->toDateString();
 
         return Inertia::render('Dashboard/Index', $data);
     }

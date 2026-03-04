@@ -8,6 +8,8 @@ const props = defineProps({
     preparing_orders_count: Number,
     monthly_orders_count: Number,
     orders_limit: Number,
+    orders_limit_start: String,
+    orders_limit_end: String,
     net_profit: Number,
     revenue: Number,
     orders_by_branch: Array,
@@ -62,6 +64,11 @@ function branchBarWidth(count) {
 
 function formatPrice(value) {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value)
+}
+
+function formatDisplayDate(dateStr) {
+    if (!dateStr) { return '' }
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function formatDateTime(dateStr) {
@@ -249,6 +256,10 @@ const isToday = from.value === to.value && from.value === new Date().toISOString
                         ></div>
                     </div>
                     <p class="text-xs text-gray-400">{{ monthlyPercent }}% utilizado</p>
+                    <div v-if="orders_limit_start && orders_limit_end" class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>Inicia: {{ formatDisplayDate(orders_limit_start) }}</span>
+                        <span>Termina: {{ formatDisplayDate(orders_limit_end) }}</span>
+                    </div>
                 </div>
                 <Link
                     :href="route('orders.index')"
