@@ -1,8 +1,6 @@
 <?php
 
-use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -17,6 +15,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SuperAdmin\AuthController as SuperAdminAuthController;
 use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
+use App\Http\Controllers\SuperAdmin\ProfileController as SuperAdminProfileController;
 use App\Http\Controllers\SuperAdmin\RestaurantController as SuperAdminRestaurantController;
 use App\Http\Controllers\SuperAdmin\StatisticsController as SuperAdminStatisticsController;
 use Illuminate\Support\Facades\Route;
@@ -27,12 +26,6 @@ Route::get('/', fn () => redirect()->route('login'));
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [LoginController::class, 'create'])->name('login');
     Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:5,1');
-
-    Route::get('/forgot-password', [ForgotPasswordController::class, 'create'])->name('password.request');
-    Route::post('/forgot-password', [ForgotPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.email');
-
-    Route::get('/reset-password/{token}', [ResetPasswordController::class, 'create'])->name('password.reset');
-    Route::post('/reset-password', [ResetPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.update');
 });
 
 // ─── Admin Restaurante — Panel (autenticado + tenant) ────────────────────────
@@ -115,6 +108,10 @@ Route::prefix('super')->name('super.')->group(function (): void {
         Route::put('/restaurants/{restaurant}/limits', [SuperAdminRestaurantController::class, 'updateLimits'])->name('restaurants.update-limits');
         Route::patch('/restaurants/{restaurant}/toggle', [SuperAdminRestaurantController::class, 'toggleActive'])->name('restaurants.toggle');
         Route::post('/restaurants/{restaurant}/regenerate-token', [SuperAdminRestaurantController::class, 'regenerateToken'])->name('restaurants.regenerate-token');
+        Route::put('/restaurants/{restaurant}/reset-password', [SuperAdminRestaurantController::class, 'resetAdminPassword'])->name('restaurants.reset-password');
+
+        Route::get('/profile', [SuperAdminProfileController::class, 'edit'])->name('profile');
+        Route::put('/profile', [SuperAdminProfileController::class, 'update'])->name('profile.update');
 
         Route::get('/statistics', [SuperAdminStatisticsController::class, 'index'])->name('statistics');
     });

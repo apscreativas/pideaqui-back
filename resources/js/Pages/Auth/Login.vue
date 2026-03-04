@@ -81,12 +81,9 @@ function submit() {
                             />
                             <span class="text-sm text-gray-600">Recordarme</span>
                         </label>
-                        <a
-                            href="/forgot-password"
-                            class="text-sm text-[#FF5722] hover:text-[#D84315] font-medium transition-colors"
-                        >
-                            ¿Olvidaste tu contraseña?
-                        </a>
+                        <span class="text-xs text-gray-400">
+                            ¿Olvidaste tu contraseña? Contacta al administrador.
+                        </span>
                     </div>
 
                     <!-- Submit -->

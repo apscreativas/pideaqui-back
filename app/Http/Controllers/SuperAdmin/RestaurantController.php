@@ -4,6 +4,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\CreateRestaurantRequest;
+use App\Http\Requests\SuperAdmin\ResetAdminPasswordRequest;
 use App\Http\Requests\SuperAdmin\UpdateRestaurantLimitsRequest;
 use App\Models\Branch;
 use App\Models\PaymentMethod;
@@ -136,5 +137,16 @@ class RestaurantController extends Controller
         $status = $restaurant->is_active ? 'activado' : 'desactivado';
 
         return back()->with('success', "Restaurante {$status}.");
+    }
+
+    public function resetAdminPassword(ResetAdminPasswordRequest $request, Restaurant $restaurant): RedirectResponse
+    {
+        $admin = User::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->firstOrFail();
+
+        $admin->update(['password' => $request->validated('password')]);
+
+        return back()->with('success', 'Contraseña del administrador actualizada.');
     }
 }

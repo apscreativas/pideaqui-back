@@ -14,6 +14,7 @@ const editingLimits = ref(false)
 const showToken = ref(false)
 const showRegenerateModal = ref(false)
 const regenerating = ref(false)
+const showResetPasswordModal = ref(false)
 
 const limitsForm = useForm({
     orders_limit: props.restaurant.orders_limit,
@@ -51,6 +52,20 @@ function toggleActive() {
 function saveLimits() {
     limitsForm.put(route('super.restaurants.update-limits', props.restaurant.id), {
         onSuccess: () => { editingLimits.value = false },
+    })
+}
+
+const passwordForm = useForm({
+    password: '',
+    password_confirmation: '',
+})
+
+function resetAdminPassword() {
+    passwordForm.put(route('super.restaurants.reset-password', props.restaurant.id), {
+        onSuccess: () => {
+            showResetPasswordModal.value = false
+            passwordForm.reset()
+        },
     })
 }
 
@@ -245,15 +260,24 @@ function regenerateToken() {
                 <!-- Admin info -->
                 <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                     <h2 class="text-sm font-semibold text-gray-900 mb-4">Administrador</h2>
-                    <div v-if="admin" class="space-y-2">
-                        <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-gray-400 text-lg">person</span>
-                            <span class="text-sm text-gray-700">{{ admin.name }}</span>
+                    <div v-if="admin" class="space-y-3">
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-gray-400 text-lg">person</span>
+                                <span class="text-sm text-gray-700">{{ admin.name }}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-gray-400 text-lg">mail</span>
+                                <span class="text-sm text-gray-700">{{ admin.email }}</span>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-gray-400 text-lg">mail</span>
-                            <span class="text-sm text-gray-700">{{ admin.email }}</span>
-                        </div>
+                        <button
+                            @click="showResetPasswordModal = true"
+                            class="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
+                        >
+                            <span class="material-symbols-outlined text-base">lock_reset</span>
+                            Restablecer contraseña
+                        </button>
                     </div>
                     <p v-else class="text-sm text-gray-400">Sin administrador asignado.</p>
                 </div>
@@ -338,6 +362,65 @@ function regenerateToken() {
                             {{ regenerating ? 'Regenerando...' : 'Regenerar' }}
                         </button>
                     </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Reset Admin Password Modal -->
+        <Teleport to="body">
+            <div
+                v-if="showResetPasswordModal"
+                class="fixed inset-0 z-50 flex items-center justify-center"
+            >
+                <div class="absolute inset-0 bg-black/40" @click="showResetPasswordModal = false; passwordForm.reset()"></div>
+                <div class="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-amber-600">lock_reset</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-900">Restablecer contraseña</h3>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-5">
+                        Asigna una nueva contraseña para el administrador de <strong>{{ restaurant.name }}</strong>.
+                    </p>
+                    <form @submit.prevent="resetAdminPassword" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
+                            <input
+                                v-model="passwordForm.password"
+                                type="password"
+                                autocomplete="new-password"
+                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                :class="{ 'border-red-400': passwordForm.errors.password }"
+                            />
+                            <p v-if="passwordForm.errors.password" class="text-xs text-red-500 mt-1">{{ passwordForm.errors.password }}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
+                            <input
+                                v-model="passwordForm.password_confirmation"
+                                type="password"
+                                autocomplete="new-password"
+                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                            />
+                        </div>
+                        <div class="flex gap-3 justify-end pt-2">
+                            <button
+                                type="button"
+                                @click="showResetPasswordModal = false; passwordForm.reset()"
+                                class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                :disabled="passwordForm.processing"
+                                class="px-5 py-2 rounded-xl bg-[#FF5722] hover:bg-[#D84315] text-white text-sm font-semibold transition-colors disabled:opacity-60"
+                            >
+                                {{ passwordForm.processing ? 'Guardando...' : 'Restablecer' }}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </Teleport>

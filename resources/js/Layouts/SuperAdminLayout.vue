@@ -10,6 +10,7 @@ const navItems = [
     { name: 'Dashboard', route: 'super.dashboard', icon: 'dashboard' },
     { name: 'Restaurantes', route: 'super.restaurants.index', icon: 'storefront' },
     { name: 'Estadísticas', route: 'super.statistics', icon: 'bar_chart' },
+    { name: 'Mi cuenta', route: 'super.profile', icon: 'person' },
 ]
 
 function isActive(routeName) {
