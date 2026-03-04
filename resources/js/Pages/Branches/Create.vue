@@ -3,6 +3,10 @@ import { Head, useForm, Link } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import MapPicker from '@/Components/MapPicker.vue'
 
+const props = defineProps({
+    mapsKey: { type: String, default: '' },
+})
+
 const form = useForm({
     name: '',
     address: '',
@@ -78,6 +82,7 @@ function submit() {
                         <MapPicker
                             :lat="form.latitude"
                             :lng="form.longitude"
+                            :maps-key="mapsKey"
                             @update:lat="form.latitude = $event"
                             @update:lng="form.longitude = $event"
                         />
@@ -107,7 +112,7 @@ function submit() {
                         </div>
                         <div class="flex items-start gap-2 mt-2 bg-blue-50 rounded-xl px-3 py-2">
                             <span class="material-symbols-outlined text-blue-500 text-base mt-0.5" style="font-variation-settings:'FILL' 1">info</span>
-                            <p class="text-xs text-blue-700">Haz clic en el mapa o arrastra el pin para ajustar la ubicación. También puedes escribir las coordenadas manualmente.</p>
+                            <p class="text-xs text-blue-700">Mueve el mapa para ajustar la ubicación o usa el botón de ubicación. También puedes escribir las coordenadas manualmente.</p>
                         </div>
                     </div>
 

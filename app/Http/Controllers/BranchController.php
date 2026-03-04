@@ -32,7 +32,9 @@ class BranchController extends Controller
     {
         $this->authorize('create', Branch::class);
 
-        return Inertia::render('Branches/Create');
+        return Inertia::render('Branches/Create', [
+            'mapsKey' => config('services.google_maps.key', ''),
+        ]);
     }
 
     public function store(StoreBranchRequest $request): RedirectResponse
@@ -60,6 +62,7 @@ class BranchController extends Controller
 
         return Inertia::render('Branches/Edit', [
             'branch' => $branch,
+            'mapsKey' => config('services.google_maps.key', ''),
         ]);
     }
 
