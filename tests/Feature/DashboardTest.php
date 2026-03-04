@@ -44,6 +44,8 @@ class DashboardTest extends TestCase
             ->has('preparing_orders_count')
             ->has('monthly_orders_count')
             ->has('orders_limit')
+            ->has('orders_limit_start')
+            ->has('orders_limit_end')
             ->has('net_profit')
             ->has('revenue')
             ->has('orders_by_branch')
