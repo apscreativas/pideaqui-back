@@ -204,12 +204,18 @@ function whatsappHref(phone) {
                             <span>Total</span>
                             <span>{{ formatPrice(order.total) }}</span>
                         </div>
-                        <p class="text-right text-xs text-gray-400 mt-1">
-                            Pago: {{ PAYMENT_LABELS[order.payment_method] ?? order.payment_method }}
-                            <template v-if="order.payment_method === 'cash' && order.cash_amount">
-                                · Paga con: ${{ parseFloat(order.cash_amount).toFixed(2) }}
-                            </template>
-                        </p>
+                        <div class="flex justify-between text-sm text-gray-500 mt-2">
+                            <span>Método de pago</span>
+                            <span>{{ PAYMENT_LABELS[order.payment_method] ?? order.payment_method }}</span>
+                        </div>
+                        <div v-if="order.payment_method === 'cash' && order.cash_amount" class="flex justify-between text-sm mt-1">
+                            <span class="text-gray-500">Paga con</span>
+                            <span class="font-bold text-gray-900">${{ parseFloat(order.cash_amount).toFixed(2) }}</span>
+                        </div>
+                        <div v-if="order.payment_method === 'cash' && order.cash_amount && parseFloat(order.cash_amount) > parseFloat(order.total)" class="flex justify-between text-sm mt-1">
+                            <span class="text-gray-500">Cambio</span>
+                            <span class="font-bold text-amber-600">${{ (parseFloat(order.cash_amount) - parseFloat(order.total)).toFixed(2) }}</span>
+                        </div>
                     </div>
                 </div>
 

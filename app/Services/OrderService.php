@@ -311,6 +311,19 @@ class OrderService
             }
         }
 
+        if ($order->payment_method === 'transfer') {
+            $transferPm = PaymentMethod::query()
+                ->where('restaurant_id', $order->restaurant_id)
+                ->where('type', 'transfer')
+                ->first();
+
+            if ($transferPm) {
+                $lines[] = "🏦 *Banco:* {$transferPm->bank_name}";
+                $lines[] = "👤 *Titular:* {$transferPm->account_holder}";
+                $lines[] = "📋 *CLABE:* {$transferPm->clabe}";
+            }
+        }
+
         if ($order->scheduled_at) {
             $lines[] = '⏰ *Hora programada:* '.$order->scheduled_at->format('H:i');
         }
