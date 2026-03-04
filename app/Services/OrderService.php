@@ -198,7 +198,9 @@ class OrderService
                 'total' => $total,
                 'payment_method' => $validated['payment_method'],
                 'distance_km' => $validated['distance_km'] ?? null,
-                'address' => $validated['address'] ?? null,
+                'address_street' => $validated['address_street'] ?? null,
+                'address_number' => $validated['address_number'] ?? null,
+                'address_colony' => $validated['address_colony'] ?? null,
                 'address_references' => $validated['address_references'] ?? null,
                 'latitude' => $validated['latitude'] ?? null,
                 'longitude' => $validated['longitude'] ?? null,
@@ -271,9 +273,10 @@ class OrderService
             $lines[] = $desc;
         }
 
-        if ($order->delivery_type === 'delivery' && $order->address) {
+        if ($order->delivery_type === 'delivery' && $order->address_street) {
+            $address = "{$order->address_street} #{$order->address_number}, Col. {$order->address_colony}";
             $lines[] = '';
-            $lines[] = "📍 *Dirección:* {$order->address}";
+            $lines[] = "📍 *Dirección:* {$address}";
 
             if ($order->address_references) {
                 $lines[] = "*Referencias:* {$order->address_references}";

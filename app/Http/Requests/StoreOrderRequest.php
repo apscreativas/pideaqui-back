@@ -23,7 +23,9 @@ class StoreOrderRequest extends FormRequest
             'delivery_type' => ['required', 'in:delivery,pickup,dine_in'],
             'branch_id' => ['required', 'integer', 'min:1'],
 
-            'address' => ['nullable', 'required_if:delivery_type,delivery', 'string', 'max:500'],
+            'address_street' => ['nullable', 'required_if:delivery_type,delivery', 'string', 'max:255'],
+            'address_number' => ['nullable', 'required_if:delivery_type,delivery', 'string', 'max:50'],
+            'address_colony' => ['nullable', 'required_if:delivery_type,delivery', 'string', 'max:255'],
             'address_references' => ['nullable', 'string', 'max:500'],
             'latitude' => ['nullable', 'required_if:delivery_type,delivery', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'required_if:delivery_type,delivery', 'numeric', 'between:-180,180'],

@@ -79,7 +79,9 @@ class OrderApiTest extends TestCase
             'customer' => ['token' => 'uuid-test-001', 'name' => 'María García', 'phone' => '5598765432'],
             'delivery_type' => 'delivery',
             'branch_id' => $branch->id,
-            'address' => 'Calle Morelos 45, Col. Roma Norte',
+            'address_street' => 'Calle Morelos',
+            'address_number' => '45',
+            'address_colony' => 'Roma Norte',
             'address_references' => 'Entre Orizaba y Tonalá',
             'latitude' => 19.420000,
             'longitude' => -99.110000,
@@ -124,7 +126,7 @@ class OrderApiTest extends TestCase
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
         ], $this->authHeaders($restaurant))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['address', 'latitude', 'longitude', 'distance_km', 'delivery_cost']);
+            ->assertJsonValidationErrors(['address_street', 'address_number', 'address_colony', 'latitude', 'longitude', 'distance_km', 'delivery_cost']);
     }
 
     // ─── Happy paths ─────────────────────────────────────────────────────────

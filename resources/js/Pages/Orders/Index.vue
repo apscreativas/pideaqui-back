@@ -109,6 +109,12 @@ const monthlyPercent = computed(() =>
     Math.min(100, Math.round((props.monthly_count / props.orders_limit) * 100)),
 )
 
+const DELIVERY_ICONS = {
+    delivery: 'two_wheeler',
+    pickup: 'store',
+    dine_in: 'restaurant',
+}
+
 const COLUMNS = [
     { key: 'received',   label: 'Recibido',        dotClass: 'bg-orange-500', borderClass: 'border-l-orange-500' },
     { key: 'preparing',  label: 'En preparación',   dotClass: 'bg-amber-400',  borderClass: 'border-l-amber-400' },
@@ -361,7 +367,10 @@ function onCardClick(orderId) {
                         <h4 class="font-bold text-gray-800 mb-1 truncate" :class="col.key === 'delivered' ? 'line-through decoration-gray-400 text-gray-600' : ''">
                             {{ order.customer?.name ?? '\u2014' }}
                         </h4>
-                        <p class="text-sm text-gray-500 mb-3 truncate">{{ order.branch?.name }}</p>
+                        <div class="flex items-center gap-1.5 text-sm text-gray-500 mb-3">
+                            <span class="material-symbols-outlined text-base" aria-hidden="true">{{ DELIVERY_ICONS[order.delivery_type] }}</span>
+                            <span class="truncate">{{ order.branch?.name }}</span>
+                        </div>
                         <div class="flex items-center justify-between mt-auto">
                             <span class="font-bold text-gray-900">{{ formatPrice(order.total) }}</span>
                             <span
