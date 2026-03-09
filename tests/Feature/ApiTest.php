@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
-use App\Models\BranchSchedule;
 use App\Models\Category;
 use App\Models\Customer;
 use App\Models\ModifierGroup;
@@ -239,19 +238,12 @@ class ApiTest extends TestCase
         $this->assertEquals($activeBranch->id, $data[0]['id']);
     }
 
-    public function test_get_branches_includes_schedules(): void
+    public function test_get_branches_returns_correct_structure(): void
     {
         $restaurant = $this->restaurant();
-        $branch = Branch::factory()->create([
+        Branch::factory()->create([
             'restaurant_id' => $restaurant->id,
             'is_active' => true,
-        ]);
-        BranchSchedule::factory()->create([
-            'branch_id' => $branch->id,
-            'day_of_week' => 1,
-            'opens_at' => '09:00',
-            'closes_at' => '21:00',
-            'is_closed' => false,
         ]);
 
         $this->getJson('/api/branches', $this->authHeaders($restaurant))
@@ -260,12 +252,10 @@ class ApiTest extends TestCase
                 'data' => [
                     '*' => [
                         'id', 'name', 'address', 'latitude', 'longitude', 'whatsapp',
-                        'schedules' => [
-                            '*' => ['day_of_week', 'opens_at', 'closes_at', 'is_closed'],
-                        ],
                     ],
                 ],
-            ]);
+            ])
+            ->assertJsonMissing(['schedules']);
     }
 
     public function test_get_branches_does_not_return_other_restaurants_branches(): void

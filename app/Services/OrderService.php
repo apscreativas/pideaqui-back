@@ -12,12 +12,16 @@ use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Restaurant;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class OrderService
 {
-    public function __construct(private readonly LimitService $limitService) {}
+    public function __construct(
+        private readonly LimitService $limitService,
+        private readonly HaversineService $haversine,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $validated
@@ -38,7 +42,38 @@ class OrderService
             throw ValidationException::withMessages(['delivery_type' => ['Este restaurante no permite este tipo de entrega.']]);
         }
 
-        // PASO 1c — Validate payment method is active for this restaurant.
+        // PASO 1c — Validate restaurant is currently open (or order is scheduled within operating hours).
+        $restaurant->load('schedules');
+        $scheduledAt = isset($validated['scheduled_at']) ? Carbon::parse($validated['scheduled_at']) : null;
+
+        if ($scheduledAt) {
+            // Validate scheduled_at falls within the restaurant's schedule for that day.
+            $schedule = $restaurant->schedules->firstWhere('day_of_week', $scheduledAt->dayOfWeek);
+
+            if (! $schedule || $schedule->is_closed || ! $schedule->opens_at || ! $schedule->closes_at) {
+                throw ValidationException::withMessages(['scheduled_at' => ['El restaurante no opera en el día y hora seleccionados.']]);
+            }
+
+            $time = $scheduledAt->format('H:i:s');
+
+            if ($schedule->opens_at > $schedule->closes_at) {
+                // Overnight schedule (e.g., 20:00–02:00).
+                $withinSchedule = $time >= $schedule->opens_at || $time <= $schedule->closes_at;
+            } else {
+                $withinSchedule = $time >= $schedule->opens_at && $time <= $schedule->closes_at;
+            }
+
+            if (! $withinSchedule) {
+                throw ValidationException::withMessages(['scheduled_at' => ['La hora programada está fuera del horario de operación.']]);
+            }
+        } else {
+            // Immediate order — restaurant must be open right now.
+            if (! $restaurant->isCurrentlyOpen()) {
+                throw ValidationException::withMessages(['scheduled_at' => ['El restaurante está cerrado en este momento.']]);
+            }
+        }
+
+        // PASO 1d — Validate payment method is active for this restaurant.
         $hasPaymentMethod = PaymentMethod::query()
             ->where('restaurant_id', $restaurant->id)
             ->where('type', $validated['payment_method'])
@@ -158,10 +193,17 @@ class OrderService
             $subtotal += ((float) $products[$itemData['product_id']]->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
-        // PASO 7b — Validate delivery cost against delivery ranges.
+        // PASO 7b — Validate delivery cost against delivery ranges (distance computed server-side).
         $deliveryCost = 0.0;
+        $distanceKm = null;
         if ($validated['delivery_type'] === 'delivery') {
-            $distanceKm = (float) ($validated['distance_km'] ?? 0);
+            // Compute distance server-side using Haversine — never trust client-supplied distance_km.
+            $distanceKm = round($this->haversine->distance(
+                (float) $validated['latitude'],
+                (float) $validated['longitude'],
+                (float) $branch->latitude,
+                (float) $branch->longitude,
+            ), 2);
 
             $range = DeliveryRange::query()
                 ->where('restaurant_id', $restaurant->id)
@@ -178,8 +220,15 @@ class OrderService
 
         $total = $subtotal + $deliveryCost;
 
+        // Validate cash_amount covers the total.
+        if (($validated['payment_method'] === 'cash') && ! empty($validated['cash_amount']) && ((float) $validated['cash_amount'] < $total)) {
+            throw ValidationException::withMessages([
+                'cash_amount' => ['El monto pagado debe ser mayor o igual al total del pedido.'],
+            ]);
+        }
+
         // PASO 8 — Create Order inside transaction with limit re-check (prevents TOCTOU race condition).
-        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $products, $validOptions, $subtotal, $deliveryCost, $total): Order {
+        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $products, $validOptions, $subtotal, $deliveryCost, $distanceKm, $total): Order {
             // Re-check order limit with a FOR UPDATE lock on the restaurant row.
             $lockedRestaurant = Restaurant::query()->lockForUpdate()->find($restaurant->id);
             if ($this->limitService->isOrderLimitReached($lockedRestaurant)) {
@@ -198,7 +247,7 @@ class OrderService
                 'total' => $total,
                 'payment_method' => $validated['payment_method'],
                 'cash_amount' => $validated['cash_amount'] ?? null,
-                'distance_km' => $validated['distance_km'] ?? null,
+                'distance_km' => $distanceKm,
                 'address_street' => $validated['address_street'] ?? null,
                 'address_number' => $validated['address_number'] ?? null,
                 'address_colony' => $validated['address_colony'] ?? null,
@@ -304,10 +353,10 @@ class OrderService
         $lines[] = "💳 *Pago:* {$paymentLabel}";
 
         if ($order->payment_method === 'cash' && $order->cash_amount) {
-            $lines[] = "💵 *Paga con:* $".number_format((float) $order->cash_amount, 2);
+            $lines[] = '💵 *Paga con:* $'.number_format((float) $order->cash_amount, 2);
             $change = (float) $order->cash_amount - (float) $order->total;
             if ($change > 0) {
-                $lines[] = "🔄 *Cambio:* $".number_format($change, 2);
+                $lines[] = '🔄 *Cambio:* $'.number_format($change, 2);
             }
         }
 
@@ -318,9 +367,15 @@ class OrderService
                 ->first();
 
             if ($transferPm) {
-                $lines[] = "🏦 *Banco:* {$transferPm->bank_name}";
-                $lines[] = "👤 *Titular:* {$transferPm->account_holder}";
-                $lines[] = "📋 *CLABE:* {$transferPm->clabe}";
+                if ($transferPm->bank_name) {
+                    $lines[] = "🏦 *Banco:* {$transferPm->bank_name}";
+                }
+                if ($transferPm->account_holder) {
+                    $lines[] = "👤 *Titular:* {$transferPm->account_holder}";
+                }
+                if ($transferPm->clabe) {
+                    $lines[] = "📋 *CLABE:* {$transferPm->clabe}";
+                }
             }
         }
 

@@ -37,11 +37,6 @@ class Branch extends Model
         return $this->belongsTo(Restaurant::class);
     }
 
-    public function schedules(): HasMany
-    {
-        return $this->hasMany(BranchSchedule::class)->orderBy('day_of_week');
-    }
-
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);

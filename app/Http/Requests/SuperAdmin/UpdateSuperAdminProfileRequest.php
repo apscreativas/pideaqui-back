@@ -21,7 +21,7 @@ class UpdateSuperAdminProfileRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('super_admins')->ignore($this->user('superadmin')->id)],
-            'current_password' => ['nullable', 'string'],
+            'current_password' => ['required_with:password', 'string'],
             'password' => ['nullable', 'confirmed', Password::defaults()],
         ];
     }

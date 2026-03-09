@@ -21,7 +21,6 @@ class BranchResource extends JsonResource
             'latitude' => (float) $this->latitude,
             'longitude' => (float) $this->longitude,
             'whatsapp' => $this->whatsapp,
-            'schedules' => BranchScheduleResource::collection($this->whenLoaded('schedules')),
         ];
     }
 }

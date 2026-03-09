@@ -19,7 +19,6 @@ class BranchController extends Controller
         $branches = Branch::query()
             ->where('restaurant_id', $restaurant->id)
             ->where('is_active', true)
-            ->with('schedules')
             ->orderBy('name')
             ->get();
 

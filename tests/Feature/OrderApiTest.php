@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Restaurant;
+use App\Models\RestaurantSchedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -36,6 +37,15 @@ class OrderApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Create schedule for current day so restaurant is "open" during tests.
+        RestaurantSchedule::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'day_of_week' => now()->dayOfWeek,
+            'opens_at' => '00:00',
+            'closes_at' => '23:59',
+            'is_closed' => false,
+        ]);
+
         return $restaurant;
     }
 
@@ -50,6 +60,8 @@ class OrderApiTest extends TestCase
             'restaurant_id' => $restaurant->id,
             'whatsapp' => '+5215512345678',
             'is_active' => true,
+            'latitude' => 19.430000,  // ~1.1 km from client coords in deliveryPayload
+            'longitude' => -99.110000,
         ]);
     }
 
@@ -377,11 +389,14 @@ class OrderApiTest extends TestCase
         $restaurant = $this->restaurant();
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
-        // Range only covers 0-2 km, but distance_km is 3.2
+        // Range only covers 0-2 km, but Haversine distance ~3.3 km with these coords.
         $this->withDeliveryRange($restaurant, 0, 2, 30.00);
 
         $this->postJson('/api/orders',
-            $this->deliveryPayload($branch, $product),
+            $this->deliveryPayload($branch, $product, [
+                'latitude' => 19.460000,   // ~3.3 km from branch (19.43, -99.11)
+                'longitude' => -99.110000,
+            ]),
             $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['delivery_cost']);
@@ -580,6 +595,97 @@ class OrderApiTest extends TestCase
             ]],
         ], $this->authHeaders($restaurant))
             ->assertUnprocessable();
+    }
+
+    // ─── Schedule & open/closed validation ──────────────────────────────────
+
+    public function test_order_rejected_when_restaurant_is_closed(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
+
+        // Override schedule to mark current day as closed.
+        RestaurantSchedule::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('day_of_week', now()->dayOfWeek)
+            ->update(['is_closed' => true, 'opens_at' => null, 'closes_at' => null]);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product),
+            $this->authHeaders($restaurant),
+        )->assertUnprocessable()
+            ->assertJsonValidationErrors(['scheduled_at']);
+    }
+
+    public function test_scheduled_at_outside_operating_hours_returns_422(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant);
+        $this->withDeliveryRange($restaurant);
+
+        // Schedule for 03:00 AM next week (same day of week).
+        // The restaurant() helper already created a schedule for today's dayOfWeek.
+        // Narrow it to 10:00-14:00.
+        RestaurantSchedule::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('day_of_week', now()->dayOfWeek)
+            ->update(['opens_at' => '10:00', 'closes_at' => '14:00']);
+
+        $scheduledAt = now()->addWeek()->setTime(3, 0);
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product, [
+                'scheduled_at' => $scheduledAt->toIso8601String(),
+            ]),
+            $this->authHeaders($restaurant),
+        )->assertUnprocessable()
+            ->assertJsonValidationErrors(['scheduled_at']);
+    }
+
+    public function test_scheduled_at_within_operating_hours_succeeds(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        // Schedule exists from restaurant() helper: 00:00-23:59.
+        // Schedule for tomorrow at 12:00 (within hours).
+        $tomorrow = now()->addDay()->setTime(12, 0);
+
+        // Ensure schedule for tomorrow's day_of_week.
+        RestaurantSchedule::updateOrCreate(
+            ['restaurant_id' => $restaurant->id, 'day_of_week' => $tomorrow->dayOfWeek],
+            ['opens_at' => '00:00', 'closes_at' => '23:59', 'is_closed' => false],
+        );
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product, [
+                'scheduled_at' => $tomorrow->toIso8601String(),
+            ]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+    }
+
+    public function test_distance_km_is_computed_server_side(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant, 0, 10, 30.00);
+
+        // Client sends fake distance_km: 0.1, but real Haversine is ~1.1 km.
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product, ['distance_km' => 0.1]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $order = \App\Models\Order::latest()->first();
+        // Server-computed distance should be ~1.11 km, NOT 0.1.
+        $this->assertGreaterThan(1.0, (float) $order->distance_km);
     }
 
     public function test_cross_product_modifier_returns_422(): void

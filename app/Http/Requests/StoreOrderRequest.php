@@ -34,7 +34,7 @@ class StoreOrderRequest extends FormRequest
 
             'scheduled_at' => ['nullable', 'date', 'after:now'],
             'payment_method' => ['required', 'in:cash,terminal,transfer'],
-            'cash_amount' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
+            'cash_amount' => ['nullable', 'numeric', 'min:0.01', 'max:99999.99', 'prohibited_unless:payment_method,cash'],
 
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.product_id' => ['required', 'integer', 'min:1'],
