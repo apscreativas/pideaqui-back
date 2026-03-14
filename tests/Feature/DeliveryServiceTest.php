@@ -145,17 +145,17 @@ class DeliveryServiceTest extends TestCase
 
     // ─── Multiple branches (Google Distance Matrix called) ───────────────────
 
-    public function test_multiple_branches_selects_closest_by_google_distance(): void
+    public function test_multiple_branches_selects_closest_by_haversine_then_google(): void
     {
         $restaurant = $this->restaurant();
         $nearBranch = $this->branchAt($restaurant, 20.659698, -103.349609);
         $farBranch = $this->branchAt($restaurant, 20.700000, -103.400000);
         $this->addRanges($restaurant);
 
+        // Only 1 candidate (the Haversine-closest) is sent to Google Maps
         $mockGoogle = $this->createMock(GoogleMapsService::class);
         $mockGoogle->method('getDistances')->willReturn([
-            ['distance_km' => 1.5, 'duration_minutes' => 5],  // nearBranch
-            ['distance_km' => 6.0, 'duration_minutes' => 15], // farBranch
+            ['distance_km' => 1.5, 'duration_minutes' => 5],
         ]);
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
@@ -180,10 +180,9 @@ class DeliveryServiceTest extends TestCase
         $this->addRanges($restaurant);
 
         $mockGoogle = $this->createMock(GoogleMapsService::class);
-        // Closest branch is 5 km away (second range: $30)
+        // Only 1 candidate sent to Google Maps, returns 5 km (second range: $30)
         $mockGoogle->method('getDistances')->willReturn([
             ['distance_km' => 5.0, 'duration_minutes' => 12],
-            ['distance_km' => 8.5, 'duration_minutes' => 20],
         ]);
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
@@ -258,6 +257,44 @@ class DeliveryServiceTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.is_open', false)
             ->assertJsonStructure(['data' => ['schedule' => ['day_of_week', 'opens_at', 'closes_at', 'is_closed']]]);
+    }
+
+    public function test_google_maps_failure_returns_error_without_fallback(): void
+    {
+        $restaurant = $this->restaurant();
+        $this->branchAt($restaurant, 20.659698, -103.349609);
+        $this->addRanges($restaurant);
+
+        $mockGoogle = $this->createMock(GoogleMapsService::class);
+        $mockGoogle->method('getDistances')->willThrowException(new \RuntimeException('Google Maps unavailable'));
+        $this->instance(GoogleMapsService::class, $mockGoogle);
+
+        $response = $this->postJson('/api/delivery/calculate', [
+            'latitude' => 20.660000,
+            'longitude' => -103.350000,
+        ], $this->authHeaders($restaurant));
+
+        $response->assertStatus(422);
+    }
+
+    public function test_google_maps_max_float_returns_error(): void
+    {
+        $restaurant = $this->restaurant();
+        $this->branchAt($restaurant, 20.659698, -103.349609);
+        $this->addRanges($restaurant);
+
+        $mockGoogle = $this->createMock(GoogleMapsService::class);
+        $mockGoogle->method('getDistances')->willReturn([
+            ['distance_km' => PHP_FLOAT_MAX, 'duration_minutes' => 0],
+        ]);
+        $this->instance(GoogleMapsService::class, $mockGoogle);
+
+        $response = $this->postJson('/api/delivery/calculate', [
+            'latitude' => 20.660000,
+            'longitude' => -103.350000,
+        ], $this->authHeaders($restaurant));
+
+        $response->assertStatus(422);
     }
 
     public function test_does_not_return_other_restaurants_branches(): void

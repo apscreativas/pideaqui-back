@@ -17,7 +17,7 @@ class CategoryController extends Controller
 
         $data = $request->validated();
         $data['restaurant_id'] = $request->user()->restaurant_id;
-        $data['sort_order'] = $data['sort_order'] ?? 0;
+        $data['sort_order'] = Category::where('restaurant_id', $data['restaurant_id'])->max('sort_order') + 1;
         $data['is_active'] = $data['is_active'] ?? true;
 
         if ($request->hasFile('image')) {

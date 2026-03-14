@@ -65,7 +65,7 @@ class OrderController extends Controller
     {
         $this->authorize('view', $order);
 
-        $order->load(['customer', 'branch', 'items.product', 'items.modifiers.modifierOption']);
+        $order->load(['customer', 'branch', 'items.modifiers']);
 
         return Inertia::render('Orders/Show', [
             'order' => $order,
@@ -91,7 +91,11 @@ class OrderController extends Controller
         $order->update(['status' => $nextStatus]);
         $order->load(['customer:id,name,phone', 'branch:id,name']);
 
-        broadcast(new OrderStatusChanged($order, $previousStatus))->toOthers();
+        try {
+            broadcast(new OrderStatusChanged($order, $previousStatus))->toOthers();
+        } catch (\Throwable $e) {
+            logger()->warning('Broadcast failed for status change', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+        }
 
         return back()->with('success', 'Estatus actualizado.');
     }
@@ -108,7 +112,11 @@ class OrderController extends Controller
         ]);
         $order->load(['customer:id,name,phone', 'branch:id,name']);
 
-        broadcast(new OrderCancelled($order, $previousStatus))->toOthers();
+        try {
+            broadcast(new OrderCancelled($order, $previousStatus))->toOthers();
+        } catch (\Throwable $e) {
+            logger()->warning('Broadcast failed for cancellation', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+        }
 
         return back()->with('success', 'Pedido cancelado.');
     }

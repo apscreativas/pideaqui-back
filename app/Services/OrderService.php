@@ -20,7 +20,6 @@ class OrderService
 {
     public function __construct(
         private readonly LimitService $limitService,
-        private readonly HaversineService $haversine,
         private readonly GoogleMapsService $googleMaps,
     ) {}
 
@@ -283,17 +282,23 @@ class OrderService
             ]);
 
             foreach ($validated['items'] as $itemData) {
+                $product = $products[$itemData['product_id']];
                 $item = $order->items()->create([
-                    'product_id' => $itemData['product_id'],
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
                     'quantity' => $itemData['quantity'],
-                    'unit_price' => $products[$itemData['product_id']]->price,
+                    'unit_price' => $product->price,
+                    'production_cost' => $product->production_cost,
                     'notes' => $itemData['notes'] ?? null,
                 ]);
 
                 foreach ($itemData['modifiers'] ?? [] as $modifierData) {
+                    $option = $validOptions[$modifierData['modifier_option_id']];
                     $item->modifiers()->create([
-                        'modifier_option_id' => $modifierData['modifier_option_id'],
-                        'price_adjustment' => $validOptions[$modifierData['modifier_option_id']]->price_adjustment,
+                        'modifier_option_id' => $option->id,
+                        'modifier_option_name' => $option->name,
+                        'price_adjustment' => $option->price_adjustment,
+                        'production_cost' => $option->production_cost,
                     ]);
                 }
             }
@@ -302,7 +307,7 @@ class OrderService
         });
 
         // PASO 9 — Load relations needed for WhatsApp message.
-        $order->load(['items.product', 'items.modifiers.modifierOption', 'branch', 'customer']);
+        $order->load(['items.modifiers', 'branch', 'customer']);
 
         $whatsappMessage = $this->buildWhatsAppMessage($order);
 
@@ -310,22 +315,18 @@ class OrderService
     }
 
     /**
-     * Get driving distance via Google Maps, falling back to Haversine if unavailable.
+     * Get driving distance via Google Maps. Throws if unavailable.
      */
     private function getDrivingDistance(float $clientLat, float $clientLng, Branch $branch): float
     {
-        try {
-            $destinations = collect([['latitude' => (float) $branch->latitude, 'longitude' => (float) $branch->longitude]]);
-            $results = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations);
+        $destinations = collect([['latitude' => (float) $branch->latitude, 'longitude' => (float) $branch->longitude]]);
+        $results = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations);
 
-            if ($results[0]['distance_km'] < PHP_FLOAT_MAX) {
-                return round($results[0]['distance_km'], 2);
-            }
-        } catch (\Throwable) {
-            // Google Maps unavailable — fall back to Haversine.
+        if ($results[0]['distance_km'] >= PHP_FLOAT_MAX) {
+            throw ValidationException::withMessages(['delivery_cost' => ['No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.']]);
         }
 
-        return round($this->haversine->distance($clientLat, $clientLng, (float) $branch->latitude, (float) $branch->longitude), 2);
+        return round($results[0]['distance_km'], 2);
     }
 
     private function buildWhatsAppMessage(Order $order): string
@@ -347,14 +348,14 @@ class OrderService
 
         foreach ($order->items as $item) {
             $modifierNames = $item->modifiers
-                ->map(fn ($m) => $m->modifierOption->name)
+                ->map(fn ($m) => $m->modifier_option_name)
                 ->filter()
                 ->join(', ');
 
             $modifierTotal = $item->modifiers->sum(fn ($m) => (float) $m->price_adjustment);
             $itemTotal = ((float) $item->unit_price + $modifierTotal) * $item->quantity;
 
-            $desc = "- {$item->quantity}x {$item->product->name}";
+            $desc = "- {$item->quantity}x {$item->product_name}";
 
             if ($modifierNames) {
                 $desc .= " ({$modifierNames})";

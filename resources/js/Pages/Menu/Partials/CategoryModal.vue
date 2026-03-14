@@ -17,7 +17,6 @@ const imagePreview = ref(null)
 const form = useForm({
     name: '',
     description: '',
-    sort_order: 0,
     is_active: true,
     image: null,
 })
@@ -26,7 +25,6 @@ watch(() => props.category, (cat) => {
     if (cat) {
         form.name = cat.name
         form.description = cat.description ?? ''
-        form.sort_order = cat.sort_order ?? 0
         form.is_active = cat.is_active ?? true
         imagePreview.value = cat.image_url ?? null
     } else {
@@ -141,36 +139,20 @@ function submit() {
                             <p v-if="form.errors.image" class="mt-1 text-xs text-red-500">{{ form.errors.image }}</p>
                         </div>
 
-                        <!-- Sort order + Estado -->
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Orden de visualización
-                                </label>
-                                <div class="flex items-center gap-2 border border-gray-200 rounded-xl px-4 py-2.5">
-                                    <span class="material-symbols-outlined text-gray-400 text-lg">sort</span>
-                                    <input
-                                        v-model.number="form.sort_order"
-                                        type="number"
-                                        min="0"
-                                        class="w-full text-sm focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Estado
-                                </label>
-                                <div
-                                    class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 cursor-pointer"
-                                    @click="form.is_active = !form.is_active"
-                                >
-                                    <span class="text-sm text-gray-700">{{ form.is_active ? 'Activa' : 'Inactiva' }}</span>
-                                    <div class="ml-auto w-10 h-6 rounded-full transition-colors relative"
-                                        :class="form.is_active ? 'bg-[#FF5722]' : 'bg-gray-200'">
-                                        <div class="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all"
-                                            :class="form.is_active ? 'left-5' : 'left-1'" />
-                                    </div>
+                        <!-- Estado -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">
+                                Estado
+                            </label>
+                            <div
+                                class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-2.5 cursor-pointer"
+                                @click="form.is_active = !form.is_active"
+                            >
+                                <span class="text-sm text-gray-700">{{ form.is_active ? 'Activa' : 'Inactiva' }}</span>
+                                <div class="ml-auto w-10 h-6 rounded-full transition-colors relative"
+                                    :class="form.is_active ? 'bg-[#FF5722]' : 'bg-gray-200'">
+                                    <div class="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all"
+                                        :class="form.is_active ? 'left-5' : 'left-1'" />
                                 </div>
                             </div>
                         </div>

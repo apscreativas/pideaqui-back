@@ -17,8 +17,10 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'product_id',
+        'product_name',
         'quantity',
         'unit_price',
+        'production_cost',
         'notes',
     ];
 
@@ -27,6 +29,7 @@ class OrderItem extends Model
         return [
             'quantity' => 'integer',
             'unit_price' => 'decimal:2',
+            'production_cost' => 'decimal:2',
         ];
     }
 

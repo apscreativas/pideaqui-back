@@ -16,13 +16,16 @@ class OrderItemModifier extends Model
     protected $fillable = [
         'order_item_id',
         'modifier_option_id',
+        'modifier_option_name',
         'price_adjustment',
+        'production_cost',
     ];
 
     protected function casts(): array
     {
         return [
             'price_adjustment' => 'decimal:2',
+            'production_cost' => 'decimal:2',
         ];
     }
 

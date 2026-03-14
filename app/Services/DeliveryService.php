@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 class DeliveryService
 {
     /** Maximum number of branches sent to Google Distance Matrix. */
-    private const MAX_CANDIDATES = 3;
+    private const MAX_CANDIDATES = 1;
 
     public function __construct(
         private readonly HaversineService $haversine,
@@ -60,7 +60,11 @@ class DeliveryService
             'longitude' => (float) $c['branch']->longitude,
         ]);
 
-        $distances = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations->values());
+        try {
+            $distances = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations->values());
+        } catch (\Throwable) {
+            throw new \DomainException('No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.');
+        }
 
         $candidatesIndexed = $candidates->values();
         $bestIndex = 0;
@@ -73,6 +77,10 @@ class DeliveryService
             }
         }
 
+        if ($bestDistance >= PHP_FLOAT_MAX) {
+            throw new \DomainException('No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.');
+        }
+
         /** @var Branch $branch */
         $branch = $candidatesIndexed[$bestIndex]['branch'];
         $distanceKm = $distances[$bestIndex]['distance_km'];
@@ -82,7 +90,7 @@ class DeliveryService
     }
 
     /**
-     * Get driving distance via Google Maps, falling back to Haversine if unavailable.
+     * Get driving distance via Google Maps. Throws DomainException if unavailable.
      *
      * @return array{0: float, 1: int}
      */
@@ -91,15 +99,15 @@ class DeliveryService
         try {
             $destinations = collect([['latitude' => (float) $branch->latitude, 'longitude' => (float) $branch->longitude]]);
             $results = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations);
-
-            if ($results[0]['distance_km'] < PHP_FLOAT_MAX) {
-                return [$results[0]['distance_km'], $results[0]['duration_minutes']];
-            }
         } catch (\Throwable) {
-            // Google Maps unavailable — fall back to Haversine.
+            throw new \DomainException('No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.');
         }
 
-        return [$this->haversine->distance($clientLat, $clientLng, (float) $branch->latitude, (float) $branch->longitude), 0];
+        if ($results[0]['distance_km'] >= PHP_FLOAT_MAX) {
+            throw new \DomainException('No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.');
+        }
+
+        return [$results[0]['distance_km'], $results[0]['duration_minutes']];
     }
 
     private function buildResult(Restaurant $restaurant, Branch $branch, float $distanceKm, int $durationMinutes): DeliveryResult

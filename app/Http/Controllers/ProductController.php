@@ -31,7 +31,7 @@ class ProductController extends Controller
 
         $data = $request->validated();
         $data['restaurant_id'] = $request->user()->restaurant_id;
-        $data['sort_order'] = $data['sort_order'] ?? 0;
+        $data['sort_order'] = Product::where('category_id', $data['category_id'])->max('sort_order') + 1;
         $data['is_active'] = $data['is_active'] ?? true;
 
         if ($request->hasFile('image')) {

@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
@@ -103,7 +103,22 @@ const DELIVERY_LABELS = {
     dine_in: 'Restaurante',
 }
 
-const isToday = from.value === to.value && from.value === new Date().toISOString().slice(0, 10)
+const activePreset = computed(() => {
+    const f = from.value
+    const t = to.value
+    const todayStr = new Date().toISOString().slice(0, 10)
+    if (f === todayStr && t === todayStr) { return 'today' }
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    const yd = y.toISOString().slice(0, 10)
+    if (f === yd && t === yd) { return 'yesterday' }
+    const w = new Date()
+    w.setDate(w.getDate() - 6)
+    if (f === w.toISOString().slice(0, 10) && t === todayStr) { return 'week' }
+    const m = new Date().toISOString().slice(0, 8) + '01'
+    if (f === m && t === todayStr) { return 'month' }
+    return 'custom'
+})
 </script>
 
 <template>
@@ -121,22 +136,19 @@ const isToday = from.value === to.value && from.value === new Date().toISOString
                 <!-- Presets -->
                 <div class="flex gap-1">
                     <button
-                        @click="setPreset('today')"
+                        v-for="p in [
+                            { key: 'today', label: 'Hoy' },
+                            { key: 'yesterday', label: 'Ayer' },
+                            { key: 'week', label: '7 días' },
+                            { key: 'month', label: 'Mes' },
+                        ]"
+                        :key="p.key"
+                        @click="setPreset(p.key)"
                         class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
-                        :class="isToday ? 'bg-[#FF5722] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                    >Hoy</button>
-                    <button
-                        @click="setPreset('yesterday')"
-                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >Ayer</button>
-                    <button
-                        @click="setPreset('week')"
-                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >7 días</button>
-                    <button
-                        @click="setPreset('month')"
-                        class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >Mes</button>
+                        :class="activePreset === p.key
+                            ? 'bg-[#FF5722] text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    >{{ p.label }}</button>
                 </div>
 
                 <!-- Date inputs -->

@@ -56,25 +56,23 @@ class StatisticsService
 
     private function netProfit(int $restaurantId, Carbon $from, Carbon $to): float
     {
-        // Revenue - production cost (base items)
+        // Revenue - production cost (base items) — uses snapshot columns
         $baseProfit = (float) DB::table('order_items as oi')
             ->join('orders as o', 'oi.order_id', '=', 'o.id')
-            ->join('products as p', 'oi.product_id', '=', 'p.id')
             ->where('o.restaurant_id', $restaurantId)
             ->where('o.status', 'delivered')
             ->whereBetween('o.created_at', [$from, $to])
-            ->selectRaw('COALESCE(SUM(oi.unit_price * oi.quantity) - SUM(p.production_cost * oi.quantity), 0) as profit')
+            ->selectRaw('COALESCE(SUM(oi.unit_price * oi.quantity) - SUM(oi.production_cost * oi.quantity), 0) as profit')
             ->value('profit');
 
-        // Modifier profit = (price_adjustment - production_cost) × quantity
+        // Modifier profit = (price_adjustment - production_cost) × quantity — uses snapshot columns
         $modifierProfit = (float) DB::table('order_item_modifiers as oim')
             ->join('order_items as oi', 'oim.order_item_id', '=', 'oi.id')
             ->join('orders as o', 'oi.order_id', '=', 'o.id')
-            ->join('modifier_options as mo', 'oim.modifier_option_id', '=', 'mo.id')
             ->where('o.restaurant_id', $restaurantId)
             ->where('o.status', 'delivered')
             ->whereBetween('o.created_at', [$from, $to])
-            ->selectRaw('COALESCE(SUM((oim.price_adjustment - mo.production_cost) * oi.quantity), 0) as profit')
+            ->selectRaw('COALESCE(SUM((oim.price_adjustment - oim.production_cost) * oi.quantity), 0) as profit')
             ->value('profit');
 
         return round($baseProfit + $modifierProfit, 2);

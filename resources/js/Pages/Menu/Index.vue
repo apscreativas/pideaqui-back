@@ -9,13 +9,28 @@ const props = defineProps({
     categories: Array,
 })
 
-const expandedCategories = ref(new Set(props.categories.map(c => c.id)))
+// ─── Local ordered copy for optimistic DnD ─────────────────────────────────
+
+const localCategories = ref(props.categories.map((c) => ({
+    ...c,
+    products: [...c.products],
+})))
+
+// Sync when Inertia refreshes props (after server response)
+router.on('success', () => {
+    localCategories.value = props.categories.map((c) => ({
+        ...c,
+        products: [...c.products],
+    }))
+})
+
+const expandedCategories = ref(new Set(props.categories.map((c) => c.id)))
 const showCategoryModal = ref(false)
 const editingCategory = ref(null)
 
-const totalProducts = computed(() => props.categories.reduce((sum, c) => sum + c.products.length, 0))
-const activeCategories = computed(() => props.categories.filter(c => c.is_active).length)
-const outOfStock = computed(() => props.categories.reduce((sum, c) => sum + c.products.filter(p => !p.is_active).length, 0))
+const totalProducts = computed(() => localCategories.value.reduce((sum, c) => sum + c.products.length, 0))
+const activeCategories = computed(() => localCategories.value.filter((c) => c.is_active).length)
+const outOfStock = computed(() => localCategories.value.reduce((sum, c) => sum + c.products.filter((p) => !p.is_active).length, 0))
 
 function toggleCategory(id) {
     if (expandedCategories.value.has(id)) {
@@ -53,12 +68,12 @@ function deleteProduct(product) {
     confirmType.value = 'product'
 }
 
-const confirmTitle = computed(() => confirmType.value === 'category' ? '¿Eliminar categoría?' : '¿Eliminar producto?')
+const confirmTitle = computed(() => confirmType.value === 'category' ? '¿Eliminar categoria?' : '¿Eliminar producto?')
 const confirmMessage = computed(() => {
-    if (!confirmTarget.value) return ''
+    if (!confirmTarget.value) { return '' }
     return confirmType.value === 'category'
-        ? `La categoría "${confirmTarget.value.name}" y sus productos se eliminarán permanentemente.`
-        : `El producto "${confirmTarget.value.name}" se eliminará permanentemente.`
+        ? `La categoria "${confirmTarget.value.name}" y sus productos se eliminaran permanentemente.`
+        : `El producto "${confirmTarget.value.name}" se eliminara permanentemente.`
 })
 
 function onConfirmDelete() {
@@ -83,17 +98,125 @@ function toggleProduct(product) {
 function formatPrice(value) {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value)
 }
+
+// ─── Category Drag & Drop ───────────────────────────────────────────────────
+
+const draggingCategoryId = ref(null)
+const categoryDropTarget = ref(null)
+
+function onCatDragStart(category, event) {
+    draggingCategoryId.value = category.id
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(category.id))
+}
+
+function onCatDragOver(category, event) {
+    if (!draggingCategoryId.value || draggingCategoryId.value === category.id) { return }
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    categoryDropTarget.value = category.id
+}
+
+function onCatDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        categoryDropTarget.value = null
+    }
+}
+
+function onCatDrop(targetCategory, event) {
+    event.preventDefault()
+    categoryDropTarget.value = null
+
+    const fromId = draggingCategoryId.value
+    if (!fromId || fromId === targetCategory.id) { return }
+
+    const cats = [...localCategories.value]
+    const fromIdx = cats.findIndex((c) => c.id === fromId)
+    const toIdx = cats.findIndex((c) => c.id === targetCategory.id)
+    if (fromIdx === -1 || toIdx === -1) { return }
+
+    const [moved] = cats.splice(fromIdx, 1)
+    cats.splice(toIdx, 0, moved)
+    localCategories.value = cats
+
+    router.patch(route('categories.reorder'), {
+        ids: cats.map((c) => c.id),
+    }, { preserveScroll: true, preserveState: true })
+}
+
+function onCatDragEnd() {
+    draggingCategoryId.value = null
+    categoryDropTarget.value = null
+}
+
+// ─── Product Drag & Drop ────────────────────────────────────────────────────
+
+const draggingProductId = ref(null)
+const draggingProductCategoryId = ref(null)
+const productDropTarget = ref(null)
+
+function onProdDragStart(product, categoryId, event) {
+    draggingProductId.value = product.id
+    draggingProductCategoryId.value = categoryId
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(product.id))
+}
+
+function onProdDragOver(product, categoryId, event) {
+    if (!draggingProductId.value || draggingProductId.value === product.id) { return }
+    if (draggingProductCategoryId.value !== categoryId) { return }
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    productDropTarget.value = product.id
+}
+
+function onProdDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        productDropTarget.value = null
+    }
+}
+
+function onProdDrop(targetProduct, categoryId, event) {
+    event.preventDefault()
+    productDropTarget.value = null
+
+    const fromId = draggingProductId.value
+    if (!fromId || fromId === targetProduct.id) { return }
+    if (draggingProductCategoryId.value !== categoryId) { return }
+
+    const catIdx = localCategories.value.findIndex((c) => c.id === categoryId)
+    if (catIdx === -1) { return }
+
+    const products = [...localCategories.value[catIdx].products]
+    const fromIdx = products.findIndex((p) => p.id === fromId)
+    const toIdx = products.findIndex((p) => p.id === targetProduct.id)
+    if (fromIdx === -1 || toIdx === -1) { return }
+
+    const [moved] = products.splice(fromIdx, 1)
+    products.splice(toIdx, 0, moved)
+    localCategories.value[catIdx].products = products
+
+    router.patch(route('products.reorder'), {
+        ids: products.map((p) => p.id),
+    }, { preserveScroll: true, preserveState: true })
+}
+
+function onProdDragEnd() {
+    draggingProductId.value = null
+    draggingProductCategoryId.value = null
+    productDropTarget.value = null
+}
 </script>
 
 <template>
-    <Head title="Menú Digital" />
-    <AppLayout title="Menú Digital">
+    <Head title="Menu Digital" />
+    <AppLayout title="Menu Digital">
 
         <!-- Header -->
         <div class="flex items-start justify-between mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">Menú Digital</h1>
-                <p class="mt-1 text-sm text-gray-500">Gestiona tus categorías, productos y disponibilidad.</p>
+                <h1 class="text-2xl font-bold text-gray-900">Menu Digital</h1>
+                <p class="mt-1 text-sm text-gray-500">Gestiona tus categorias, productos y disponibilidad. Arrastra para reordenar.</p>
             </div>
             <div class="flex items-center gap-3">
                 <Link
@@ -108,7 +231,7 @@ function formatPrice(value) {
                     class="flex items-center gap-2 bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-colors"
                 >
                     <span class="material-symbols-outlined text-lg">add</span>
-                    Nueva Categoría
+                    Nueva Categoria
                 </button>
             </div>
         </div>
@@ -120,7 +243,7 @@ function formatPrice(value) {
                 <p class="text-3xl font-bold text-gray-900 mt-1">{{ totalProducts }}</p>
             </div>
             <div class="bg-white rounded-2xl border border-gray-100 p-4">
-                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide">Categorías Activas</p>
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide">Categorias Activas</p>
                 <p class="text-3xl font-bold text-gray-900 mt-1">{{ activeCategories }}</p>
             </div>
             <div class="bg-white rounded-2xl border border-gray-100 p-4">
@@ -130,22 +253,41 @@ function formatPrice(value) {
         </div>
 
         <!-- Empty state -->
-        <div v-if="categories.length === 0" class="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+        <div v-if="localCategories.length === 0" class="bg-white rounded-2xl border border-gray-100 p-12 text-center">
             <span class="material-symbols-outlined text-4xl text-gray-300 mb-3" style="font-variation-settings:'FILL' 1">restaurant_menu</span>
-            <p class="text-gray-500 font-medium mb-1">No hay categorías aún</p>
-            <p class="text-sm text-gray-400 mb-4">Crea tu primera categoría para comenzar a agregar productos.</p>
+            <p class="text-gray-500 font-medium mb-1">No hay categorias aun</p>
+            <p class="text-sm text-gray-400 mb-4">Crea tu primera categoria para comenzar a agregar productos.</p>
             <button @click="openNewCategory" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors">
-                + Nueva Categoría
+                + Nueva Categoria
             </button>
         </div>
 
-        <!-- Categories accordion -->
+        <!-- Categories accordion with DnD -->
         <div v-else class="space-y-3">
-            <div v-for="category in categories" :key="category.id" class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div
+                v-for="(category, catIndex) in localCategories"
+                :key="category.id"
+                class="bg-white rounded-2xl border overflow-hidden transition-all"
+                :class="[
+                    categoryDropTarget === category.id ? 'border-[#FF5722] ring-2 ring-[#FF5722]/20' : 'border-gray-100',
+                    draggingCategoryId === category.id ? 'opacity-50' : '',
+                ]"
+                draggable="true"
+                @dragstart="onCatDragStart(category, $event)"
+                @dragover="onCatDragOver(category, $event)"
+                @dragleave="onCatDragLeave($event)"
+                @drop="onCatDrop(category, $event)"
+                @dragend="onCatDragEnd"
+            >
 
                 <!-- Category header -->
                 <div class="flex items-center gap-3 px-5 py-4">
-                    <span class="material-symbols-outlined text-gray-300 cursor-grab">drag_indicator</span>
+                    <!-- Position number + drag handle -->
+                    <div class="flex items-center gap-1.5 shrink-0 cursor-grab active:cursor-grabbing select-none">
+                        <span class="text-xs font-bold text-gray-300 w-5 text-center">{{ catIndex + 1 }}</span>
+                        <span class="material-symbols-outlined text-gray-300 hover:text-gray-400 transition-colors">drag_indicator</span>
+                    </div>
+
                     <div class="flex-1 flex items-center gap-3 min-w-0">
                         <img
                             v-if="category.image_path"
@@ -164,7 +306,7 @@ function formatPrice(value) {
                                         ? 'bg-green-50 text-green-700'
                                         : 'bg-gray-100 text-gray-500'"
                                 >
-                                    {{ category.is_active ? '• Activo' : '• Inactivo' }}
+                                    {{ category.is_active ? 'Activo' : 'Inactivo' }}
                                 </span>
                             </div>
                             <p class="text-xs text-gray-400">{{ category.products.length }} productos</p>
@@ -209,14 +351,15 @@ function formatPrice(value) {
 
                     <!-- Empty products -->
                     <div v-if="category.products.length === 0" class="px-5 py-4 text-center text-sm text-gray-400">
-                        No hay productos en esta categoría.
+                        No hay productos en esta categoria.
                     </div>
 
-                    <!-- Products table -->
+                    <!-- Products table with DnD rows -->
                     <table v-else class="w-full">
                         <thead>
                             <tr class="border-b border-gray-50">
-                                <th class="px-5 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide w-16">Foto</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide w-20">#</th>
+                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide w-16">Foto</th>
                                 <th class="px-2 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Nombre del producto</th>
                                 <th class="px-2 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Precio</th>
                                 <th class="px-2 py-2 text-left text-xs font-medium text-[#FF5722] uppercase tracking-wide">Costo</th>
@@ -226,11 +369,27 @@ function formatPrice(value) {
                         </thead>
                         <tbody>
                             <tr
-                                v-for="product in category.products"
+                                v-for="(product, prodIndex) in category.products"
                                 :key="product.id"
-                                class="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
+                                class="border-b border-gray-50 last:border-0 transition-all"
+                                :class="[
+                                    productDropTarget === product.id ? 'bg-orange-50/70 ring-1 ring-[#FF5722]/30' : 'hover:bg-gray-50/50',
+                                    draggingProductId === product.id ? 'opacity-50' : '',
+                                ]"
+                                draggable="true"
+                                @dragstart.stop="onProdDragStart(product, category.id, $event)"
+                                @dragover.stop="onProdDragOver(product, category.id, $event)"
+                                @dragleave="onProdDragLeave($event)"
+                                @drop.stop="onProdDrop(product, category.id, $event)"
+                                @dragend="onProdDragEnd"
                             >
-                                <td class="px-5 py-3">
+                                <td class="px-3 py-3">
+                                    <div class="flex items-center gap-1 cursor-grab active:cursor-grabbing select-none">
+                                        <span class="text-xs font-bold text-gray-300 w-4 text-center">{{ prodIndex + 1 }}</span>
+                                        <span class="material-symbols-outlined text-gray-300 hover:text-gray-400 transition-colors text-lg">drag_indicator</span>
+                                    </div>
+                                </td>
+                                <td class="px-2 py-3">
                                     <img
                                         v-if="product.image_path"
                                         :src="product.image_url"

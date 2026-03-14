@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryMethodController;
 use App\Http\Controllers\DeliveryRangeController;
 use App\Http\Controllers\LimitsController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentMethodController;
@@ -43,6 +44,9 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
 
     // ─── Cancelaciones ──────────────────────────────────────────────────────────
     Route::get('/cancellations', [CancellationController::class, 'index'])->name('cancellations.index');
+
+    // ─── Mapa operativo ──────────────────────────────────────────────────────────
+    Route::get('/map', [MapController::class, 'index'])->name('map.index');
 
     // ─── Configuración ─────────────────────────────────────────────────────────
     Route::get('/settings', fn () => redirect()->route('settings.general'))->name('settings.index');

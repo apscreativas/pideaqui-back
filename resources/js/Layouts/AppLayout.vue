@@ -8,6 +8,10 @@ defineProps({
         type: String,
         default: '',
     },
+    flush: {
+        type: Boolean,
+        default: false,
+    },
 })
 
 const page = usePage()
@@ -19,6 +23,7 @@ const navItems = [
     { name: 'Menú Digital', route: 'menu.index', icon: 'restaurant_menu' },
     { name: 'Pedidos', route: 'orders.index', icon: 'receipt_long' },
     { name: 'Cancelaciones', route: 'cancellations.index', icon: 'cancel' },
+    { name: 'Mapa', route: 'map.index', icon: 'map' },
     { name: 'Sucursales', route: 'branches.index', icon: 'store' },
     { name: 'Configuración', route: 'settings.index', icon: 'settings' },
 ]
@@ -119,7 +124,7 @@ function logout() {
             </div>
 
             <!-- Page content -->
-            <main class="flex-1 px-8 py-8">
+            <main class="flex-1" :class="flush ? 'min-h-0 overflow-hidden' : 'px-8 py-8'">
                 <slot />
             </main>
         </div>

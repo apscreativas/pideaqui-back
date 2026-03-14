@@ -110,10 +110,28 @@ function orderNumber(id) {
     return '#' + String(id).padStart(4, '0')
 }
 
-function itemTotal(item) {
-    const modTotal = item.modifiers?.reduce((s, m) => s + parseFloat(m.price_adjustment ?? 0), 0) ?? 0
-    return (parseFloat(item.unit_price) + modTotal) * item.quantity
+function itemSaleTotal(item) {
+    const modPriceTotal = item.modifiers?.reduce((s, m) => s + parseFloat(m.price_adjustment ?? 0), 0) ?? 0
+    return (parseFloat(item.unit_price) + modPriceTotal) * item.quantity
 }
+
+function itemProductionCost(item) {
+    const baseCost = parseFloat(item.production_cost ?? 0) * item.quantity
+    const modCost = item.modifiers?.reduce((s, m) => s + parseFloat(m.production_cost ?? 0) * item.quantity, 0) ?? 0
+    return baseCost + modCost
+}
+
+function itemProfit(item) {
+    return itemSaleTotal(item) - itemProductionCost(item)
+}
+
+const totalProductionCost = computed(() => {
+    return props.order.items?.reduce((sum, item) => sum + itemProductionCost(item), 0) ?? 0
+})
+
+const totalProfit = computed(() => {
+    return props.order.items?.reduce((sum, item) => sum + itemProfit(item), 0) ?? 0
+})
 
 function advanceStatus() {
     router.put(route('orders.advance-status', props.order.id), {}, {
@@ -244,6 +262,7 @@ function whatsappHref(phone) {
             <!-- Left: Order items -->
             <div class="lg:col-span-2 flex flex-col gap-6">
 
+                <!-- Detalle del pedido -->
                 <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                     <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-[#FF5722]">list_alt</span>
@@ -254,51 +273,109 @@ function whatsappHref(phone) {
                         <div
                             v-for="item in order.items"
                             :key="item.id"
-                            class="py-4 flex flex-col gap-1"
+                            class="py-5 flex flex-col gap-3"
                         >
-                            <div class="flex justify-between">
-                                <h4 class="font-bold text-gray-800">{{ item.quantity }}x {{ item.product?.name ?? 'Producto' }}</h4>
-                                <span class="font-bold text-gray-900">{{ formatPrice(itemTotal(item)) }}</span>
+                            <!-- Item header -->
+                            <div class="flex justify-between items-start">
+                                <h4 class="font-bold text-gray-900">{{ item.quantity }}x {{ item.product_name || item.product?.name || 'Producto' }}</h4>
+                                <span class="font-bold text-gray-900 shrink-0 ml-4">{{ formatPrice(itemSaleTotal(item)) }}</span>
                             </div>
-                            <div v-if="item.modifiers?.length" class="text-sm text-gray-500 space-y-0.5">
-                                <p v-for="mod in item.modifiers" :key="mod.id">
-                                    · {{ mod.modifier_option?.name }}
-                                    <span v-if="parseFloat(mod.price_adjustment) > 0" class="text-gray-400">
-                                        (+{{ formatPrice(mod.price_adjustment) }})
-                                    </span>
-                                </p>
+
+                            <!-- Precio de venta unitario -->
+                            <div class="flex justify-between text-sm text-gray-500">
+                                <span>Precio de venta</span>
+                                <span>{{ formatPrice(item.unit_price) }}</span>
                             </div>
-                            <p v-if="item.notes" class="text-sm text-amber-700 bg-amber-50 px-2 py-1 rounded mt-1">
+
+                            <!-- Modificadores -->
+                            <div v-if="item.modifiers?.length" class="rounded-lg bg-gray-50 px-3 py-2.5 space-y-1.5">
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Modificadores</p>
+                                <div v-for="mod in item.modifiers" :key="mod.id" class="flex justify-between text-sm">
+                                    <span class="text-gray-700">{{ mod.modifier_option_name || mod.modifier_option?.name }}</span>
+                                    <div class="flex gap-3 text-xs shrink-0 ml-4">
+                                        <span v-if="parseFloat(mod.price_adjustment) > 0" class="text-gray-500">+{{ formatPrice(mod.price_adjustment) }}</span>
+                                        <span class="text-red-400">costo {{ formatPrice(mod.production_cost ?? 0) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Costo de producción -->
+                            <div class="rounded-lg bg-red-50/60 px-3 py-2.5 space-y-1">
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Costo de producción</p>
+                                <div class="flex justify-between text-sm">
+                                    <span class="text-gray-600">Producto base</span>
+                                    <span class="text-red-600">{{ formatPrice(item.production_cost ?? 0) }}</span>
+                                </div>
+                                <div v-for="mod in (item.modifiers ?? []).filter(m => parseFloat(m.production_cost ?? 0) > 0)" :key="'cost-' + mod.id" class="flex justify-between text-sm">
+                                    <span class="text-gray-600">{{ mod.modifier_option_name || mod.modifier_option?.name }}</span>
+                                    <span class="text-red-600">{{ formatPrice(mod.production_cost) }}</span>
+                                </div>
+                                <div class="flex justify-between text-sm font-bold border-t border-red-100 pt-1 mt-1">
+                                    <span class="text-gray-700">Costo total <span v-if="item.quantity > 1" class="font-normal text-gray-400">(x{{ item.quantity }})</span></span>
+                                    <span class="text-red-700">{{ formatPrice(itemProductionCost(item)) }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Ganancia del item -->
+                            <div class="flex justify-between items-center rounded-lg bg-green-50/60 px-3 py-2 text-sm font-bold">
+                                <span class="text-green-800">Ganancia del item</span>
+                                <span class="text-green-700">{{ formatPrice(itemProfit(item)) }}</span>
+                            </div>
+
+                            <!-- Notas -->
+                            <p v-if="item.notes" class="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">
                                 Nota: {{ item.notes }}
                             </p>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Totals -->
-                    <div class="mt-6 border-t border-gray-200 pt-6 flex flex-col gap-2">
+                <!-- Resumen financiero del pedido -->
+                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[#FF5722]">account_balance</span>
+                        Resumen del pedido
+                    </h3>
+
+                    <div class="flex flex-col gap-2">
+                        <!-- Venta -->
                         <div class="flex justify-between text-sm text-gray-500">
-                            <span>Subtotal</span>
+                            <span>Subtotal venta</span>
                             <span>{{ formatPrice(order.subtotal) }}</span>
                         </div>
                         <div v-if="order.delivery_type === 'delivery'" class="flex justify-between text-sm text-gray-500">
-                            <span>Envío</span>
+                            <span>Costo de envío</span>
                             <span>{{ formatPrice(order.delivery_cost) }}</span>
                         </div>
-                        <div class="flex justify-between text-xl font-black text-gray-900 mt-2">
-                            <span>Total</span>
+                        <div class="flex justify-between text-base font-black text-gray-900 border-t border-gray-100 pt-2 mt-1">
+                            <span>Total cobrado</span>
                             <span>{{ formatPrice(order.total) }}</span>
                         </div>
-                        <div class="flex justify-between text-sm text-gray-500 mt-2">
+
+                        <!-- Costos -->
+                        <div class="flex justify-between text-sm text-red-600 mt-3">
+                            <span>Costo total de producción</span>
+                            <span class="font-semibold">-{{ formatPrice(totalProductionCost) }}</span>
+                        </div>
+
+                        <!-- Ganancia -->
+                        <div class="flex justify-between items-center rounded-lg bg-green-50 px-4 py-3 mt-2">
+                            <span class="text-green-800 font-bold">Ganancia bruta</span>
+                            <span class="text-green-700 text-lg font-black">{{ formatPrice(totalProfit) }}</span>
+                        </div>
+
+                        <!-- Método de pago -->
+                        <div class="flex justify-between text-sm text-gray-500 mt-3 border-t border-gray-100 pt-3">
                             <span>Método de pago</span>
-                            <span>{{ PAYMENT_LABELS[order.payment_method] ?? order.payment_method }}</span>
+                            <span class="font-medium text-gray-700">{{ PAYMENT_LABELS[order.payment_method] ?? order.payment_method }}</span>
                         </div>
-                        <div v-if="order.payment_method === 'cash' && order.cash_amount" class="flex justify-between text-sm mt-1">
+                        <div v-if="order.payment_method === 'cash' && order.cash_amount" class="flex justify-between text-sm">
                             <span class="text-gray-500">Paga con</span>
-                            <span class="font-bold text-gray-900">${{ parseFloat(order.cash_amount).toFixed(2) }}</span>
+                            <span class="font-bold text-gray-900">{{ formatPrice(order.cash_amount) }}</span>
                         </div>
-                        <div v-if="order.payment_method === 'cash' && order.cash_amount && parseFloat(order.cash_amount) > parseFloat(order.total)" class="flex justify-between text-sm mt-1">
+                        <div v-if="order.payment_method === 'cash' && order.cash_amount && parseFloat(order.cash_amount) > parseFloat(order.total)" class="flex justify-between text-sm">
                             <span class="text-gray-500">Cambio</span>
-                            <span class="font-bold text-amber-600">${{ (parseFloat(order.cash_amount) - parseFloat(order.total)).toFixed(2) }}</span>
+                            <span class="font-bold text-amber-600">{{ formatPrice(parseFloat(order.cash_amount) - parseFloat(order.total)) }}</span>
                         </div>
                     </div>
                 </div>
@@ -355,6 +432,11 @@ function whatsappHref(phone) {
                         <div class="flex items-center gap-2 rounded-lg bg-[#FF5722]/5 px-3 py-2 text-sm font-bold text-[#FF5722]">
                             <span class="material-symbols-outlined">{{ DELIVERY_ICONS[order.delivery_type] }}</span>
                             {{ DELIVERY_LABELS[order.delivery_type] }}
+                        </div>
+
+                        <div v-if="order.delivery_type === 'delivery' && order.distance_km" class="flex flex-col gap-1">
+                            <p class="text-sm font-bold text-gray-500">Distancia</p>
+                            <p class="text-gray-800">{{ parseFloat(order.distance_km).toFixed(2) }} km</p>
                         </div>
 
                         <div v-if="order.delivery_type === 'delivery'" class="flex flex-col gap-1">

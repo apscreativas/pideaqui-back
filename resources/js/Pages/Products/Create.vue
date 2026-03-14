@@ -15,7 +15,6 @@ const form = useForm({
     price: '',
     production_cost: '',
     category_id: '',
-    sort_order: 0,
     is_active: true,
     image: null,
     modifier_groups: [],
@@ -332,16 +331,6 @@ function submit() {
                                 <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
                             </select>
                             <p v-if="form.errors.category_id" class="mt-1 text-xs text-red-500">{{ form.errors.category_id }}</p>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1.5">Orden de visualización</label>
-                            <input
-                                v-model.number="form.sort_order"
-                                type="number"
-                                min="0"
-                                class="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
-                            />
                         </div>
 
                         <div>
