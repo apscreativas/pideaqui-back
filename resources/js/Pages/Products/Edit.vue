@@ -201,8 +201,10 @@ function submit() {
                                         v-model="group.name"
                                         type="text"
                                         placeholder="Nombre del grupo (ej: Elige tu tortilla)"
-                                        class="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                        class="w-full rounded-xl border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                        :class="form.errors[`modifier_groups.${gi}.name`] ? 'border-red-400' : 'border-gray-200'"
                                     />
+                                    <p v-if="form.errors[`modifier_groups.${gi}.name`]" class="text-xs text-red-500 mt-1">{{ form.errors[`modifier_groups.${gi}.name`] }}</p>
                                     <div class="flex items-center gap-4">
                                         <select
                                             v-model="group.selection_type"
@@ -233,6 +235,7 @@ function submit() {
 
                             <!-- Options -->
                             <div class="space-y-2 ml-2">
+                                <p v-if="form.errors[`modifier_groups.${gi}.options`]" class="text-xs text-red-500 mb-1">{{ form.errors[`modifier_groups.${gi}.options`] }}</p>
                                 <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Opciones</p>
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="flex-1 text-xs text-gray-400">Nombre</span>
@@ -245,12 +248,16 @@ function submit() {
                                     :key="oi"
                                     class="flex items-center gap-2"
                                 >
-                                    <input
-                                        v-model="option.name"
-                                        type="text"
-                                        placeholder="Nombre de opción"
-                                        class="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
-                                    />
+                                    <div class="flex-1">
+                                        <input
+                                            v-model="option.name"
+                                            type="text"
+                                            placeholder="Nombre de opción"
+                                            class="w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                            :class="form.errors[`modifier_groups.${gi}.options.${oi}.name`] ? 'border-red-400' : 'border-gray-200'"
+                                        />
+                                        <p v-if="form.errors[`modifier_groups.${gi}.options.${oi}.name`]" class="text-xs text-red-500 mt-0.5">{{ form.errors[`modifier_groups.${gi}.options.${oi}.name`] }}</p>
+                                    </div>
                                     <div class="relative w-24">
                                         <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
                                         <input

@@ -43,9 +43,17 @@ class StoreProductRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'name.required' => 'El nombre del producto es obligatorio.',
+            'price.required' => 'El precio es obligatorio.',
+            'category_id.required' => 'Selecciona una categoría.',
             'image.image' => 'El archivo debe ser una imagen válida.',
             'image.mimes' => 'La imagen debe ser de tipo: JPG, PNG, GIF o WebP.',
             'image.max' => 'La imagen no debe pesar más de 2 MB.',
+            'modifier_groups.*.name.required' => 'El nombre del grupo de modificadores es obligatorio.',
+            'modifier_groups.*.selection_type.required' => 'El tipo de selección es obligatorio.',
+            'modifier_groups.*.options.required' => 'Cada grupo debe tener al menos una opción.',
+            'modifier_groups.*.options.min' => 'Cada grupo debe tener al menos una opción.',
+            'modifier_groups.*.options.*.name.required' => 'El nombre de la opción es obligatorio.',
         ];
     }
 }

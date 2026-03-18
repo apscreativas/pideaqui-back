@@ -430,6 +430,10 @@ class OrderService
             if ($order->address_references) {
                 $lines[] = "*Referencias:* {$order->address_references}";
             }
+
+            if ($order->latitude && $order->longitude) {
+                $lines[] = "📌 *Ubicación:* https://maps.google.com/?q={$order->latitude},{$order->longitude}";
+            }
         }
 
         $lines[] = '';

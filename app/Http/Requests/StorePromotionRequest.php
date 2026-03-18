@@ -57,6 +57,11 @@ class StorePromotionRequest extends FormRequest
             'active_days.*.between' => 'Día de la semana inválido.',
             'starts_at.date_format' => 'El formato de hora de inicio debe ser HH:MM.',
             'ends_at.date_format' => 'El formato de hora de fin debe ser HH:MM.',
+            'modifier_groups.*.name.required' => 'El nombre del grupo de modificadores es obligatorio.',
+            'modifier_groups.*.selection_type.required' => 'El tipo de selección es obligatorio.',
+            'modifier_groups.*.options.required' => 'Cada grupo debe tener al menos una opción.',
+            'modifier_groups.*.options.min' => 'Cada grupo debe tener al menos una opción.',
+            'modifier_groups.*.options.*.name.required' => 'El nombre de la opción es obligatorio.',
         ];
     }
 }
