@@ -14,13 +14,16 @@ const props = defineProps({
     orders_limit_end: String,
     net_profit: Number,
     revenue: Number,
+    revenue_by_payment: Object,
     orders_by_branch: Array,
     recent_orders: Array,
+    branches: Array,
     filters: Object,
 })
 
 const from = ref(props.filters.from)
 const to = ref(props.filters.to)
+const branchId = ref(props.filters.branch_id || '')
 const statusFilter = ref(props.filters.status || '')
 const minAmount = ref(props.filters.min_amount || '')
 const maxAmount = ref(props.filters.max_amount || '')
@@ -28,6 +31,7 @@ const showAdvanced = ref(!!(props.filters.status || props.filters.min_amount || 
 
 function applyFilter() {
     const params = { from: from.value, to: to.value }
+    if (branchId.value) { params.branch_id = branchId.value }
     if (statusFilter.value) { params.status = statusFilter.value }
     if (minAmount.value) { params.min_amount = minAmount.value }
     if (maxAmount.value) { params.max_amount = maxAmount.value }
@@ -190,6 +194,17 @@ const activePreset = computed(() => {
                     >{{ p.label }}</button>
                 </div>
 
+                <!-- Branch selector -->
+                <select
+                    v-if="branches && branches.length > 0"
+                    v-model="branchId"
+                    @change="applyFilter"
+                    class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 bg-white focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
+                >
+                    <option value="">Todas las sucursales</option>
+                    <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                </select>
+
                 <!-- Date inputs -->
                 <div class="flex items-center gap-1.5">
                     <input
@@ -332,6 +347,43 @@ const activePreset = computed(() => {
                 <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(net_profit) }}</h3>
             </div>
 
+        </div>
+
+        <!-- Cobros por metodo de pago -->
+        <div v-if="revenue_by_payment" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
+                <span class="material-symbols-outlined text-[#FF5722]">payments</span>
+                Cobros por metodo de pago
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="flex items-center gap-4 p-4 bg-green-50/50 rounded-xl border border-green-100">
+                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-green-700">payments</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">Efectivo</p>
+                        <p class="text-xl font-bold text-gray-900">{{ formatPrice(revenue_by_payment.cash) }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                    <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-blue-700">credit_card</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">Terminal / Tarjeta</p>
+                        <p class="text-xl font-bold text-gray-900">{{ formatPrice(revenue_by_payment.terminal) }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 p-4 bg-purple-50/50 rounded-xl border border-purple-100">
+                    <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-purple-700">account_balance</span>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">Transferencia</p>
+                        <p class="text-xl font-bold text-gray-900">{{ formatPrice(revenue_by_payment.transfer) }}</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Limit bar + Charts -->

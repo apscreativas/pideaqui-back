@@ -36,6 +36,7 @@ class StatisticsService
             'orders_limit' => $restaurant->orders_limit,
             'net_profit' => $this->netProfit($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
             'revenue' => $this->revenue($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
+            'revenue_by_payment' => $this->revenueByPayment($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
             'orders_by_branch' => $this->ordersByBranch($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
             'recent_orders' => $this->recentOrders($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
         ];
@@ -100,6 +101,30 @@ class StatisticsService
         }
 
         return (float) $query->sum('total');
+    }
+
+    /**
+     * Revenue grouped by payment method (only delivered orders).
+     *
+     * @return array{cash: float, terminal: float, transfer: float}
+     */
+    private function revenueByPayment(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds, ?array $statuses, ?float $minAmount, ?float $maxAmount): array
+    {
+        $query = $this->applyFilters(Order::query(), $restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount);
+
+        if ($statuses === null) {
+            $query->where('status', 'delivered');
+        }
+
+        $rows = $query->selectRaw('payment_method, SUM(total) as total')
+            ->groupBy('payment_method')
+            ->pluck('total', 'payment_method');
+
+        return [
+            'cash' => round((float) ($rows['cash'] ?? 0), 2),
+            'terminal' => round((float) ($rows['terminal'] ?? 0), 2),
+            'transfer' => round((float) ($rows['transfer'] ?? 0), 2),
+        ];
     }
 
     private function netProfit(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds, ?array $statuses, ?float $minAmount, ?float $maxAmount): float

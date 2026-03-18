@@ -5,7 +5,6 @@ namespace App\Services;
 use App\DTOs\OrderCreatedResult;
 use App\Models\Branch;
 use App\Models\Customer;
-use App\Models\DeliveryRange;
 use App\Models\ModifierGroup;
 use App\Models\ModifierOption;
 use App\Models\Order;
@@ -22,7 +21,6 @@ class OrderService
 {
     public function __construct(
         private readonly LimitService $limitService,
-        private readonly GoogleMapsService $googleMaps,
     ) {}
 
     /**
@@ -95,14 +93,31 @@ class OrderService
         );
         $customer->update(['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']]);
 
-        // PASO 3 — Validate branch belongs to this restaurant AND is active.
-        $branch = Branch::query()
-            ->where('id', $validated['branch_id'])
-            ->where('restaurant_id', $restaurant->id)
-            ->first();
+        // PASO 3 — Determine branch.
+        // Delivery: backend calculates optimal branch (ignore client-supplied branch_id).
+        // Pickup/dine_in: client selects branch, validate it belongs to restaurant.
+        $deliveryResult = null;
 
-        if (! $branch) {
-            throw ValidationException::withMessages(['branch_id' => ['La sucursal no pertenece a este restaurante.']]);
+        if ($validated['delivery_type'] === 'delivery') {
+            $deliveryResult = app(DeliveryService::class)->calculate(
+                (float) $validated['latitude'],
+                (float) $validated['longitude'],
+                $restaurant,
+            );
+            $branch = $deliveryResult->branch;
+
+            if (! $deliveryResult->isInCoverage) {
+                throw ValidationException::withMessages(['delivery_cost' => ['No hay cobertura de entrega para esta ubicación.']]);
+            }
+        } else {
+            $branch = Branch::query()
+                ->where('id', $validated['branch_id'])
+                ->where('restaurant_id', $restaurant->id)
+                ->first();
+
+            if (! $branch) {
+                throw ValidationException::withMessages(['branch_id' => ['La sucursal no pertenece a este restaurante.']]);
+            }
         }
 
         if (! $branch->is_active) {
@@ -271,28 +286,12 @@ class OrderService
             $subtotal += ((float) $entity->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
-        // PASO 7b — Validate delivery cost against delivery ranges (distance computed server-side).
+        // PASO 7b — Delivery cost from DeliveryService result (already calculated in PASO 3).
         $deliveryCost = 0.0;
         $distanceKm = null;
-        if ($validated['delivery_type'] === 'delivery') {
-            // Compute driving distance server-side via Google Maps — never trust client-supplied distance_km.
-            $distanceKm = $this->getDrivingDistance(
-                (float) $validated['latitude'],
-                (float) $validated['longitude'],
-                $branch,
-            );
-
-            $range = DeliveryRange::query()
-                ->where('restaurant_id', $restaurant->id)
-                ->where('min_km', '<=', $distanceKm)
-                ->where('max_km', '>', $distanceKm)
-                ->first();
-
-            if (! $range) {
-                throw ValidationException::withMessages(['delivery_cost' => ['No hay rango de entrega configurado para esta distancia.']]);
-            }
-
-            $deliveryCost = (float) $range->price;
+        if ($validated['delivery_type'] === 'delivery' && $deliveryResult) {
+            $distanceKm = $deliveryResult->distanceKm;
+            $deliveryCost = $deliveryResult->deliveryCost;
         }
 
         $total = $subtotal + $deliveryCost;
@@ -377,21 +376,6 @@ class OrderService
         $whatsappMessage = $this->buildWhatsAppMessage($order);
 
         return new OrderCreatedResult(order: $order, whatsappMessage: $whatsappMessage);
-    }
-
-    /**
-     * Get driving distance via Google Maps. Throws if unavailable.
-     */
-    private function getDrivingDistance(float $clientLat, float $clientLng, Branch $branch): float
-    {
-        $destinations = collect([['latitude' => (float) $branch->latitude, 'longitude' => (float) $branch->longitude]]);
-        $results = $this->googleMaps->getDistances($clientLat, $clientLng, $destinations);
-
-        if ($results[0]['distance_km'] >= PHP_FLOAT_MAX) {
-            throw ValidationException::withMessages(['delivery_cost' => ['No se pudo calcular la distancia de entrega. Intenta de nuevo más tarde.']]);
-        }
-
-        return round($results[0]['distance_km'], 2);
     }
 
     private function buildWhatsAppMessage(Order $order): string

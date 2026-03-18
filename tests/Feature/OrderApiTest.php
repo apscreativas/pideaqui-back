@@ -389,14 +389,13 @@ class OrderApiTest extends TestCase
 
     public function test_branch_from_other_restaurant_returns_422(): void
     {
-        $restaurant = $this->restaurant();
+        $restaurant = $this->restaurant(['allows_pickup' => true]);
         $otherRestaurant = Restaurant::factory()->create(['is_active' => true]);
         $foreignBranch = $this->branch($otherRestaurant);
         $product = $this->product($restaurant);
-        $this->withDeliveryRange($restaurant);
 
         $this->postJson('/api/orders',
-            $this->deliveryPayload($foreignBranch, $product),
+            $this->deliveryPayload($foreignBranch, $product, ['delivery_type' => 'pickup']),
             $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['branch_id']);
@@ -404,17 +403,16 @@ class OrderApiTest extends TestCase
 
     public function test_inactive_branch_returns_422(): void
     {
-        $restaurant = $this->restaurant();
+        $restaurant = $this->restaurant(['allows_pickup' => true]);
         $branch = Branch::factory()->create([
             'restaurant_id' => $restaurant->id,
             'whatsapp' => '+5215512345678',
             'is_active' => false,
         ]);
         $product = $this->product($restaurant);
-        $this->withDeliveryRange($restaurant);
 
         $this->postJson('/api/orders',
-            $this->deliveryPayload($branch, $product),
+            $this->deliveryPayload($branch, $product, ['delivery_type' => 'pickup']),
             $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['branch_id']);

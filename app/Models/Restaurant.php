@@ -125,23 +125,33 @@ class Restaurant extends Model
     public function isCurrentlyOpen(): bool
     {
         $now = Carbon::now();
-        $schedule = $this->schedules->firstWhere('day_of_week', $now->dayOfWeek);
-
-        if (! $schedule || $schedule->is_closed) {
-            return false;
-        }
-
-        if (! $schedule->opens_at || ! $schedule->closes_at) {
-            return false;
-        }
-
         $currentTime = $now->format('H:i:s');
 
-        // Overnight schedule (e.g., 20:00–02:00): open if current time is after open OR before close.
-        if ($schedule->opens_at > $schedule->closes_at) {
-            return $currentTime >= $schedule->opens_at || $currentTime <= $schedule->closes_at;
+        // Check today's schedule.
+        $todaySchedule = $this->schedules->firstWhere('day_of_week', $now->dayOfWeek);
+
+        if ($todaySchedule && ! $todaySchedule->is_closed && $todaySchedule->opens_at && $todaySchedule->closes_at) {
+            if ($todaySchedule->opens_at > $todaySchedule->closes_at) {
+                // Overnight: 22:00–02:00. If current time >= opens_at, we're in the first part.
+                if ($currentTime >= $todaySchedule->opens_at) {
+                    return true;
+                }
+            } elseif ($currentTime >= $todaySchedule->opens_at && $currentTime <= $todaySchedule->closes_at) {
+                return true;
+            }
         }
 
-        return $currentTime >= $schedule->opens_at && $currentTime <= $schedule->closes_at;
+        // Check yesterday's overnight carryover.
+        // E.g., 01:00 Tuesday — check if Monday had 22:00–02:00.
+        $yesterdayDow = ($now->dayOfWeek + 6) % 7;
+        $yesterdaySchedule = $this->schedules->firstWhere('day_of_week', $yesterdayDow);
+
+        if ($yesterdaySchedule && ! $yesterdaySchedule->is_closed && $yesterdaySchedule->opens_at && $yesterdaySchedule->closes_at) {
+            if ($yesterdaySchedule->opens_at > $yesterdaySchedule->closes_at && $currentTime <= $yesterdaySchedule->closes_at) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

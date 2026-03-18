@@ -144,34 +144,38 @@ class DeliveryService
      */
     private function checkSchedule(Restaurant $restaurant): array
     {
-        $dayOfWeek = now()->dayOfWeek;
+        $now = now();
+        $currentTime = $now->format('H:i:s');
 
-        $schedule = RestaurantSchedule::query()
+        // Check today's schedule.
+        $todaySchedule = RestaurantSchedule::query()
             ->where('restaurant_id', $restaurant->id)
-            ->where('day_of_week', $dayOfWeek)
+            ->where('day_of_week', $now->dayOfWeek)
             ->first();
 
-        if (! $schedule) {
-            return [false, null];
+        if ($todaySchedule && ! $todaySchedule->is_closed && $todaySchedule->opens_at && $todaySchedule->closes_at) {
+            if ($todaySchedule->opens_at > $todaySchedule->closes_at) {
+                if ($currentTime >= $todaySchedule->opens_at) {
+                    return [true, $todaySchedule];
+                }
+            } elseif ($currentTime >= $todaySchedule->opens_at && $currentTime <= $todaySchedule->closes_at) {
+                return [true, $todaySchedule];
+            }
         }
 
-        if ($schedule->is_closed) {
-            return [false, $schedule];
+        // Check yesterday's overnight carryover.
+        $yesterdayDow = ($now->dayOfWeek + 6) % 7;
+        $yesterdaySchedule = RestaurantSchedule::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('day_of_week', $yesterdayDow)
+            ->first();
+
+        if ($yesterdaySchedule && ! $yesterdaySchedule->is_closed && $yesterdaySchedule->opens_at && $yesterdaySchedule->closes_at) {
+            if ($yesterdaySchedule->opens_at > $yesterdaySchedule->closes_at && $currentTime <= $yesterdaySchedule->closes_at) {
+                return [true, $yesterdaySchedule];
+            }
         }
 
-        if (! $schedule->opens_at || ! $schedule->closes_at) {
-            return [false, $schedule];
-        }
-
-        $now = now()->format('H:i:s');
-
-        // Overnight schedule (e.g., 20:00–02:00): open if current time is after open OR before close.
-        if ($schedule->opens_at > $schedule->closes_at) {
-            $isOpen = $now >= $schedule->opens_at || $now <= $schedule->closes_at;
-        } else {
-            $isOpen = $now >= $schedule->opens_at && $now <= $schedule->closes_at;
-        }
-
-        return [$isOpen, $schedule];
+        return [false, $todaySchedule];
     }
 }

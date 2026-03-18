@@ -234,20 +234,38 @@ function isInCurrentDateRange(createdAt) {
 
 let echoChannel = null
 
+// Branch IDs this user can see (from server-filtered branches prop).
+const allowedBranchIdSet = new Set(props.branches.map((b) => b.id))
+
+function isAllowedBranch(order) {
+    // If user can see all branches (admin), allow all.
+    if (!usePage().props.auth.user?.is_admin === false && allowedBranchIdSet.size > 0) {
+        return allowedBranchIdSet.has(order.branch?.id ?? order.branch_id)
+    }
+    return true
+}
+
+function isVisibleEvent(order) {
+    if (!isInCurrentDateRange(order.created_at)) { return false }
+    if (branchId.value && (order.branch?.id ?? order.branch_id) !== Number(branchId.value)) { return false }
+    if (!isAllowedBranch(order)) { return false }
+    return true
+}
+
 onMounted(() => {
     const echo = window.getEcho?.()
     if (!restaurantId || !echo) { return }
 
     echoChannel = echo.private(`restaurant.${restaurantId}`)
         .listen('OrderCreated', (e) => {
-            if (!isInCurrentDateRange(e.order.created_at)) { return }
-            if (branchId.value && e.order.branch?.id !== Number(branchId.value)) { return }
+            if (!isVisibleEvent(e.order)) { return }
             const exists = localOrders.value.received?.some((o) => o.id === e.order.id)
             if (!exists) {
                 localOrders.value.received.unshift(e.order)
             }
         })
         .listen('OrderStatusChanged', (e) => {
+            if (!isAllowedBranch(e.order)) { return }
             removeOrderFromColumns(e.order.id)
             const col = e.order.status
             if (localOrders.value[col]) {
@@ -255,6 +273,7 @@ onMounted(() => {
             }
         })
         .listen('OrderCancelled', (e) => {
+            if (!isAllowedBranch(e.order)) { return }
             removeOrderFromColumns(e.order.id)
         })
 })
