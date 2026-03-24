@@ -63,19 +63,23 @@ class MapController extends Controller
         $activeOrders = (clone $allOrdersQuery)->whereIn('status', ['received', 'preparing', 'on_the_way'])->count();
         $deliveredOrders = (clone $allOrdersQuery)->where('status', 'delivered')->count();
         $cancelledOrders = (clone $allOrdersQuery)->where('status', 'cancelled')->count();
-        $revenue = (float) (clone $allOrdersQuery)->where('status', 'delivered')->sum('total');
+
+        $kpis = [
+            'total' => $totalOrders,
+            'active' => $activeOrders,
+            'delivered' => $deliveredOrders,
+            'cancelled' => $cancelledOrders,
+            'geolocated' => $orders->count(),
+        ];
+
+        if ($user->isAdmin()) {
+            $kpis['revenue'] = (float) (clone $allOrdersQuery)->where('status', 'delivered')->sum('total');
+        }
 
         return Inertia::render('Map/Index', [
             'orders' => $orders,
             'branches' => $branches,
-            'kpis' => [
-                'total' => $totalOrders,
-                'active' => $activeOrders,
-                'delivered' => $deliveredOrders,
-                'cancelled' => $cancelledOrders,
-                'revenue' => $revenue,
-                'geolocated' => $orders->count(),
-            ],
+            'kpis' => $kpis,
             'filters' => [
                 'from' => $from->toDateString(),
                 'to' => $to->toDateString(),

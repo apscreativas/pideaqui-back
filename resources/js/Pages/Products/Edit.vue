@@ -1,15 +1,20 @@
 <script setup>
 import { Head, useForm, Link } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import ToggleSwitch from '@/Components/ToggleSwitch.vue'
 
 const props = defineProps({
     product: Object,
     categories: Array,
+    catalogTemplates: { type: Array, default: () => [] },
 })
 
 const imagePreview = ref(props.product.image_url ?? null)
+const showCatalogPicker = ref(false)
+const linkedTemplateIds = ref(
+    (props.product.modifier_group_templates || []).map(t => t.id)
+)
 
 const form = useForm({
     _method: 'put',
@@ -25,14 +30,37 @@ const form = useForm({
         name: g.name,
         selection_type: g.selection_type,
         is_required: g.is_required,
+        is_active: g.is_active !== false,
+        max_selections: g.max_selections ?? null,
         options: (g.options || []).map(o => ({
             id: o.id,
             name: o.name,
             price_adjustment: parseFloat(o.price_adjustment) || 0,
             production_cost: parseFloat(o.production_cost) || 0,
+            is_active: o.is_active !== false,
         })),
     })),
+    catalog_template_ids: [...linkedTemplateIds.value],
 })
+
+const linkedTemplates = computed(() =>
+    props.catalogTemplates.filter(t => linkedTemplateIds.value.includes(t.id))
+)
+
+const availableTemplates = computed(() =>
+    props.catalogTemplates.filter(t => !linkedTemplateIds.value.includes(t.id))
+)
+
+function addCatalogTemplate(templateId) {
+    linkedTemplateIds.value.push(templateId)
+    form.catalog_template_ids = [...linkedTemplateIds.value]
+    showCatalogPicker.value = false
+}
+
+function removeCatalogTemplate(templateId) {
+    linkedTemplateIds.value = linkedTemplateIds.value.filter(id => id !== templateId)
+    form.catalog_template_ids = [...linkedTemplateIds.value]
+}
 
 const IMAGE_MAX_MB = 2
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp'
@@ -58,7 +86,9 @@ function addModifierGroup() {
         name: '',
         selection_type: 'single',
         is_required: false,
-        options: [{ id: null, name: '', price_adjustment: 0, production_cost: 0 }],
+        is_active: true,
+        max_selections: null,
+        options: [{ id: null, name: '', price_adjustment: 0, production_cost: 0, is_active: true }],
     })
 }
 
@@ -67,7 +97,7 @@ function removeModifierGroup(index) {
 }
 
 function addOption(groupIndex) {
-    form.modifier_groups[groupIndex].options.push({ id: null, name: '', price_adjustment: 0, production_cost: 0 })
+    form.modifier_groups[groupIndex].options.push({ id: null, name: '', price_adjustment: 0, production_cost: 0, is_active: true })
 }
 
 function removeOption(groupIndex, optionIndex) {
@@ -163,6 +193,10 @@ function submit() {
                                 />
                             </div>
                             <p class="text-xs text-gray-400 mt-1">Solo visible para administradores</p>
+                            <p v-if="form.production_cost && form.price && parseFloat(form.production_cost) > parseFloat(form.price)" class="mt-1.5 flex items-center gap-1 text-xs text-amber-600">
+                                <span class="material-symbols-outlined text-sm">warning</span>
+                                El costo de produccion es mayor al precio de venta. Tendras ganancia negativa.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -174,14 +208,77 @@ function submit() {
                             <span class="material-symbols-outlined text-[#FF5722]" style="font-variation-settings:'FILL' 1">tune</span>
                             <h2 class="font-semibold text-gray-900">Modificadores</h2>
                         </div>
-                        <button
-                            type="button"
-                            @click="addModifierGroup"
-                            class="flex items-center gap-1.5 text-sm font-medium text-[#FF5722] hover:text-[#D84315] transition-colors"
+                        <div class="flex items-center gap-2">
+                            <button
+                                v-if="availableTemplates.length > 0"
+                                type="button"
+                                @click="showCatalogPicker = !showCatalogPicker"
+                                class="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-lg">library_add</span>
+                                Del catálogo
+                            </button>
+                            <button
+                                type="button"
+                                @click="addModifierGroup"
+                                class="flex items-center gap-1.5 text-sm font-medium text-[#FF5722] hover:text-[#D84315] transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-lg">add</span>
+                                Agregar grupo
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Catalog picker dropdown -->
+                    <div v-if="showCatalogPicker" class="mb-4 border border-indigo-200 rounded-xl p-3 bg-indigo-50/50">
+                        <p class="text-xs font-medium text-indigo-600 mb-2">Selecciona un grupo del catálogo:</p>
+                        <div class="space-y-1">
+                            <button
+                                v-for="tpl in availableTemplates"
+                                :key="tpl.id"
+                                type="button"
+                                @click="addCatalogTemplate(tpl.id)"
+                                class="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-indigo-100 transition-colors flex items-center justify-between"
+                            >
+                                <span class="font-medium text-gray-800">{{ tpl.name }}</span>
+                                <span class="text-xs text-gray-500">{{ tpl.options.length }} opciones</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Linked catalog templates (read-only) -->
+                    <div v-if="linkedTemplates.length > 0" class="space-y-3 mb-4">
+                        <div
+                            v-for="tpl in linkedTemplates"
+                            :key="'cat_' + tpl.id"
+                            class="border border-indigo-200 bg-indigo-50/30 rounded-xl p-4"
                         >
-                            <span class="material-symbols-outlined text-lg">add</span>
-                            Agregar grupo
-                        </button>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">Catálogo</span>
+                                    <span class="font-medium text-gray-900 text-sm">{{ tpl.name }}</span>
+                                    <span class="text-xs text-gray-500">
+                                        {{ tpl.selection_type === 'single' ? 'Única' : 'Múltiple' }}
+                                        <template v-if="tpl.is_required"> · Obligatorio</template>
+                                        <template v-if="tpl.max_selections"> · Máx. {{ tpl.max_selections }}</template>
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="removeCatalogTemplate(tpl.id)"
+                                    class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                    title="Desvincular"
+                                >
+                                    <span class="material-symbols-outlined text-base">link_off</span>
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 ml-1">
+                                <span v-for="opt in tpl.options" :key="opt.id" class="text-xs bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-md">
+                                    {{ opt.name }}
+                                    <span v-if="Number(opt.price_adjustment) > 0" class="text-[#FF5722]">+${{ Number(opt.price_adjustment).toFixed(2) }}</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
 
                     <p v-if="form.modifier_groups.length === 0" class="text-sm text-gray-400">
@@ -205,7 +302,7 @@ function submit() {
                                         :class="form.errors[`modifier_groups.${gi}.name`] ? 'border-red-400' : 'border-gray-200'"
                                     />
                                     <p v-if="form.errors[`modifier_groups.${gi}.name`]" class="text-xs text-red-500 mt-1">{{ form.errors[`modifier_groups.${gi}.name`] }}</p>
-                                    <div class="flex items-center gap-4">
+                                    <div class="flex items-center gap-4 flex-wrap">
                                         <select
                                             v-model="group.selection_type"
                                             class="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
@@ -221,6 +318,24 @@ function submit() {
                                             />
                                             Obligatorio
                                         </label>
+                                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                v-model="group.is_active"
+                                                class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
+                                            />
+                                            Activo
+                                        </label>
+                                        <div v-if="group.selection_type === 'multiple'" class="flex items-center gap-1.5">
+                                            <label class="text-xs text-gray-500 whitespace-nowrap">Máx. selecciones</label>
+                                            <input
+                                                v-model.number="group.max_selections"
+                                                type="number"
+                                                min="2"
+                                                placeholder="∞"
+                                                class="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                                 <button
@@ -241,6 +356,7 @@ function submit() {
                                     <span class="flex-1 text-xs text-gray-400">Nombre</span>
                                     <span class="w-24 text-xs text-gray-400">Precio</span>
                                     <span class="w-24 text-xs text-gray-400">Costo prod.</span>
+                                    <span class="w-12 text-xs text-gray-400 text-center">Activa</span>
                                     <span class="w-6"></span>
                                 </div>
                                 <div
@@ -280,6 +396,14 @@ function submit() {
                                             placeholder="Costo"
                                             class="w-full rounded-lg border border-gray-200 pl-6 pr-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
                                             title="Costo de producción"
+                                        />
+                                    </div>
+                                    <div class="w-12 flex justify-center">
+                                        <input
+                                            type="checkbox"
+                                            v-model="option.is_active"
+                                            class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
+                                            title="Opción activa"
                                         />
                                     </div>
                                     <button

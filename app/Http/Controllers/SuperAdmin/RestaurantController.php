@@ -77,6 +77,7 @@ class RestaurantController extends Controller
                 'email' => $data['admin_email'],
                 'password' => $data['password'],
             ]);
+            $user->role = 'admin';
             $user->restaurant_id = $restaurant->id;
             $user->save();
 

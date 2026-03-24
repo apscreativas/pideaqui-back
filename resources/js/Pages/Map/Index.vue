@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
+import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     orders: Array,
@@ -344,19 +345,9 @@ onUnmounted(() => {
 
                         <!-- Date inputs -->
                         <div class="flex items-center gap-1">
-                            <input
-                                type="date"
-                                v-model="from"
-                                @change="applyFilter"
-                                class="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
-                            />
+                            <DatePicker v-model="from" @change="applyFilter" placeholder="Desde" size="sm" />
                             <span class="text-gray-300 text-xs">&mdash;</span>
-                            <input
-                                type="date"
-                                v-model="to"
-                                @change="applyFilter"
-                                class="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
-                            />
+                            <DatePicker v-model="to" @change="applyFilter" placeholder="Hasta" size="sm" />
                         </div>
 
                         <!-- Branch selector -->

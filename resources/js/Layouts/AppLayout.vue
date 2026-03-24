@@ -22,9 +22,11 @@ const isAdmin = computed(() => user.value?.is_admin === true)
 
 const allNavItems = [
     { name: 'Dashboard', route: 'dashboard', icon: 'dashboard', roles: ['admin', 'operator'] },
-    { name: 'Menú Digital', route: 'menu.index', icon: 'restaurant_menu', roles: ['admin'] },
-    { name: 'Promociones', route: 'promotions.index', icon: 'sell', roles: ['admin'] },
     { name: 'Pedidos', route: 'orders.index', icon: 'receipt_long', roles: ['admin', 'operator'] },
+    { name: 'Menú Digital', route: 'menu.index', icon: 'restaurant_menu', roles: ['admin'] },
+    { name: 'Catálogo Modif.', route: 'modifier-catalog.index', icon: 'tune', roles: ['admin'] },
+    { name: 'Promociones', route: 'promotions.index', icon: 'sell', roles: ['admin'] },
+    { name: 'Cupones', route: 'coupons.index', icon: 'confirmation_number', roles: ['admin'] },
     { name: 'Cancelaciones', route: 'cancellations.index', icon: 'cancel', roles: ['admin'] },
     { name: 'Mapa', route: 'map.index', icon: 'map', roles: ['admin', 'operator'] },
     { name: 'Sucursales', route: 'branches.index', icon: 'store', roles: ['admin'] },
@@ -37,7 +39,9 @@ const navItems = computed(() => {
 })
 
 function isActive(routeName) {
-    return route().current(routeName + '*') || route().current(routeName)
+    if (route().current(routeName + '*') || route().current(routeName)) return true
+    const prefix = routeName.replace(/\.index$/, '')
+    return route().current(prefix + '.*')
 }
 
 function logout() {

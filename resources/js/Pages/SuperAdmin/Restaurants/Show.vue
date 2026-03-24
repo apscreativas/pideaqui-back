@@ -2,6 +2,7 @@
 import { Head, router, useForm } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
+import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     restaurant: Object,
@@ -221,20 +222,12 @@ function regenerateToken() {
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Inicio del periodo</label>
-                                <input
-                                    v-model="limitsForm.orders_limit_start"
-                                    type="date"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
+                                <DatePicker v-model="limitsForm.orders_limit_start" placeholder="Inicio periodo" :has-error="!!limitsForm.errors.orders_limit_start" />
                                 <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Fin del periodo</label>
-                                <input
-                                    v-model="limitsForm.orders_limit_end"
-                                    type="date"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
+                                <DatePicker v-model="limitsForm.orders_limit_end" placeholder="Fin periodo" :has-error="!!limitsForm.errors.orders_limit_end" />
                                 <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
                             </div>
                         </div>

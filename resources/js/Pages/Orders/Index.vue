@@ -2,6 +2,7 @@
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
+import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     orders: Object,
@@ -22,6 +23,7 @@ watch(() => props.orders, (fresh) => {
 const branchId = ref(props.filters?.branch_id ?? '')
 const dateFrom = ref(props.filters?.date_from ?? '')
 const dateTo = ref(props.filters?.date_to ?? '')
+const requiresInvoice = ref(props.filters?.requires_invoice ?? false)
 const showCustomRange = ref(false)
 
 function localDateStr(d) {
@@ -35,6 +37,7 @@ function applyFilters() {
         branch_id: branchId.value || undefined,
         date_from: dateFrom.value || undefined,
         date_to: dateTo.value || undefined,
+        requires_invoice: requiresInvoice.value || undefined,
     }, {
         preserveState: true,
         replace: true,
@@ -238,8 +241,8 @@ let echoChannel = null
 const allowedBranchIdSet = new Set(props.branches.map((b) => b.id))
 
 function isAllowedBranch(order) {
-    // If user can see all branches (admin), allow all.
-    if (!usePage().props.auth.user?.is_admin === false && allowedBranchIdSet.size > 0) {
+    // If user is NOT admin and has branch restrictions, filter.
+    if (usePage().props.auth.user?.is_admin === false && allowedBranchIdSet.size > 0) {
         return allowedBranchIdSet.has(order.branch?.id ?? order.branch_id)
     }
     return true
@@ -275,6 +278,18 @@ onMounted(() => {
         .listen('OrderCancelled', (e) => {
             if (!isAllowedBranch(e.order)) { return }
             removeOrderFromColumns(e.order.id)
+        })
+        .listen('OrderUpdated', (e) => {
+            if (!isAllowedBranch(e.order)) { return }
+            // Update the order data in place within its current column
+            for (const key of Object.keys(localOrders.value)) {
+                const list = localOrders.value[key]
+                const idx = list.findIndex((o) => o.id === e.order.id)
+                if (idx !== -1) {
+                    Object.assign(list[idx], e.order)
+                    break
+                }
+            }
         })
 })
 
@@ -333,6 +348,18 @@ onUnmounted(() => {
                 <span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 material-symbols-outlined text-xl pointer-events-none" aria-hidden="true">arrow_drop_down</span>
             </div>
 
+            <!-- Invoice filter -->
+            <button
+                @click="requiresInvoice = !requiresInvoice; applyFilters()"
+                class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors"
+                :class="requiresInvoice
+                    ? 'bg-amber-50 border-amber-300 text-amber-700'
+                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'"
+            >
+                <span class="material-symbols-outlined text-base" aria-hidden="true">receipt_long</span>
+                Factura
+            </button>
+
             <!-- Date presets -->
             <div class="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl p-1">
                 <button
@@ -381,23 +408,9 @@ onUnmounted(() => {
             class="flex flex-wrap items-center gap-3 mb-4 shrink-0 bg-white border border-gray-200 rounded-xl p-3"
         >
             <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Desde</label>
-            <input
-                v-model="dateFrom"
-                type="date"
-                name="date_from"
-                aria-label="Fecha desde"
-                class="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5722]/50"
-                @change="applyFilters"
-            />
+            <DatePicker v-model="dateFrom" @change="applyFilters" placeholder="Desde" size="sm" />
             <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Hasta</label>
-            <input
-                v-model="dateTo"
-                type="date"
-                name="date_to"
-                aria-label="Fecha hasta"
-                class="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5722]/50"
-                @change="applyFilters"
-            />
+            <DatePicker v-model="dateTo" @change="applyFilters" placeholder="Hasta" size="sm" />
             <button
                 class="text-xs text-[#FF5722] font-semibold hover:underline"
                 @click="dateFrom = ''; dateTo = ''; applyFilters()"
@@ -463,11 +476,13 @@ onUnmounted(() => {
                         <div class="flex items-center gap-1.5 text-sm text-gray-500 mb-3">
                             <span class="material-symbols-outlined text-base" aria-hidden="true">{{ DELIVERY_ICONS[order.delivery_type] }}</span>
                             <span class="truncate">{{ order.branch?.name }}</span>
+                            <span v-if="order.requires_invoice" class="material-symbols-outlined text-base text-amber-500" aria-hidden="true" title="Requiere factura">receipt_long</span>
                             <span class="material-symbols-outlined text-base ml-auto" aria-hidden="true" :title="order.payment_method">{{ PAYMENT_ICONS[order.payment_method] ?? 'help' }}</span>
                         </div>
                         <div class="flex items-center justify-between mt-auto">
                             <div class="flex items-center gap-2">
                                 <span class="font-bold text-gray-900">{{ formatPrice(order.total) }}</span>
+                                <span v-if="order.edit_count > 0" class="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">editado</span>
                                 <span v-if="order.scheduled_at" class="flex items-center gap-0.5 text-xs text-indigo-600 font-medium">
                                     <span class="material-symbols-outlined text-sm" aria-hidden="true">schedule</span>
                                     {{ formatScheduledTime(order.scheduled_at) }}

@@ -70,8 +70,8 @@ class UserController extends Controller
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => $data['password'],
-            'role' => 'operator',
         ]);
+        $user->role = 'operator';
         $user->restaurant_id = $restaurant->id;
         $user->save();
 

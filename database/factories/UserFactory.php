@@ -23,8 +23,23 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => 'password',
             'remember_token' => Str::random(10),
-            'role' => 'admin',
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterMaking(function (\App\Models\User $user) {
+            if (! $user->role) {
+                $user->role = 'admin';
+            }
+        });
+    }
+
+    public function operator(): static
+    {
+        return $this->afterMaking(function (\App\Models\User $user) {
+            $user->role = 'operator';
+        });
     }
 
     /**

@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
+import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     cancelled_count: Number,
@@ -149,19 +150,9 @@ function rateColor(rate) {
 
                 <!-- Date inputs -->
                 <div class="flex items-center gap-1.5">
-                    <input
-                        type="date"
-                        v-model="from"
-                        @change="applyFilter"
-                        class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
-                    />
+                    <DatePicker v-model="from" @change="applyFilter" placeholder="Desde" size="sm" />
                     <span class="text-gray-400 text-xs">&mdash;</span>
-                    <input
-                        type="date"
-                        v-model="to"
-                        @change="applyFilter"
-                        class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:ring-1 focus:ring-[#FF5722] focus:border-[#FF5722]"
-                    />
+                    <DatePicker v-model="to" @change="applyFilter" placeholder="Hasta" size="sm" />
                 </div>
 
                 <!-- Branch filter -->

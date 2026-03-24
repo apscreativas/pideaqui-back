@@ -6,18 +6,21 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\CancellationController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CouponController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryMethodController;
 use App\Http\Controllers\DeliveryRangeController;
 use App\Http\Controllers\LimitsController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MenuController;
+use App\Http\Controllers\ModifierCatalogController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SpecialDateController;
 use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
 use App\Http\Controllers\SuperAdmin\ProfileController as SuperAdminProfileController;
 use App\Http\Controllers\SuperAdmin\RestaurantController as SuperAdminRestaurantController;
@@ -50,6 +53,8 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/new-count', [OrderController::class, 'newCount'])->name('orders.new-count');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+    Route::get('/orders/{order}/edit', [OrderController::class, 'edit'])->name('orders.edit');
+    Route::put('/orders/{order}', [OrderController::class, 'update'])->name('orders.update');
     Route::put('/orders/{order}/status', [OrderController::class, 'advanceStatus'])->name('orders.advance-status');
     Route::put('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
 
@@ -85,8 +90,15 @@ Route::middleware(['auth', 'tenant', 'role:admin'])->group(function (): void {
     Route::get('/settings/payment-methods', [PaymentMethodController::class, 'index'])->name('settings.payment-methods');
     Route::put('/settings/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->name('settings.payment-methods.update');
 
+    Route::get('/settings/branding', [SettingsController::class, 'branding'])->name('settings.branding');
+    Route::put('/settings/branding', [SettingsController::class, 'updateBranding'])->name('settings.branding.update');
+
     Route::get('/settings/schedules', [SettingsController::class, 'schedules'])->name('settings.schedules');
     Route::put('/settings/schedules', [SettingsController::class, 'updateSchedules'])->name('settings.schedules.update');
+
+    Route::post('/settings/special-dates', [SpecialDateController::class, 'store'])->name('special-dates.store');
+    Route::put('/settings/special-dates/{specialDate}', [SpecialDateController::class, 'update'])->name('special-dates.update');
+    Route::delete('/settings/special-dates/{specialDate}', [SpecialDateController::class, 'destroy'])->name('special-dates.destroy');
 
     Route::get('/settings/limits', [LimitsController::class, 'index'])->name('settings.limits');
 
@@ -112,6 +124,23 @@ Route::middleware(['auth', 'tenant', 'role:admin'])->group(function (): void {
     Route::put('/menu/products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/menu/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
     Route::patch('/menu/products/{product}/toggle', [ProductController::class, 'toggle'])->name('products.toggle');
+
+    // Modifier Catalog
+    Route::get('/modifier-catalog', [ModifierCatalogController::class, 'index'])->name('modifier-catalog.index');
+    Route::post('/modifier-catalog', [ModifierCatalogController::class, 'store'])->name('modifier-catalog.store');
+    Route::put('/modifier-catalog/{modifierGroupTemplate}', [ModifierCatalogController::class, 'update'])->name('modifier-catalog.update');
+    Route::delete('/modifier-catalog/{modifierGroupTemplate}', [ModifierCatalogController::class, 'destroy'])->name('modifier-catalog.destroy');
+    Route::patch('/modifier-catalog/{modifierGroupTemplate}/toggle', [ModifierCatalogController::class, 'toggle'])->name('modifier-catalog.toggle');
+    Route::patch('/modifier-catalog/reorder', [ModifierCatalogController::class, 'reorder'])->name('modifier-catalog.reorder');
+
+    // Cupones
+    Route::get('/coupons', [CouponController::class, 'index'])->name('coupons.index');
+    Route::get('/coupons/create', [CouponController::class, 'create'])->name('coupons.create');
+    Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
+    Route::get('/coupons/{coupon}/edit', [CouponController::class, 'edit'])->name('coupons.edit');
+    Route::put('/coupons/{coupon}', [CouponController::class, 'update'])->name('coupons.update');
+    Route::delete('/coupons/{coupon}', [CouponController::class, 'destroy'])->name('coupons.destroy');
+    Route::patch('/coupons/{coupon}/toggle-active', [CouponController::class, 'toggleActive'])->name('coupons.toggle-active');
 
     // Promociones
     Route::get('/promotions', [PromotionController::class, 'index'])->name('promotions.index');

@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\DTOs\OrderCreatedResult;
 use App\Models\Branch;
+use App\Models\Coupon;
+use App\Models\CouponUse;
 use App\Models\Customer;
 use App\Models\ModifierGroup;
 use App\Models\ModifierOption;
+use App\Models\ModifierOptionTemplate;
 use App\Models\Order;
 use App\Models\OrderEvent;
 use App\Models\PaymentMethod;
@@ -43,26 +46,36 @@ class OrderService
         }
 
         // PASO 1c — Validate restaurant is currently open (or order is scheduled within operating hours).
+        // Uses getResolvedScheduleForDate() which checks special dates > regular schedule.
         $restaurant->load('schedules');
         $scheduledAt = isset($validated['scheduled_at'])
             ? Carbon::parse($validated['scheduled_at'], config('app.timezone'))
             : null;
 
         if ($scheduledAt) {
-            // Validate scheduled_at falls within the restaurant's schedule for that day.
-            $schedule = $restaurant->schedules->firstWhere('day_of_week', $scheduledAt->dayOfWeek);
+            // Resolve the effective schedule for the scheduled date (special date > regular).
+            $resolved = $restaurant->getResolvedScheduleForDate($scheduledAt);
 
-            if (! $schedule || $schedule->is_closed || ! $schedule->opens_at || ! $schedule->closes_at) {
+            if ($resolved['source'] === 'closed') {
+                $msg = 'El restaurante estará cerrado ese día';
+                if ($resolved['label']) {
+                    $msg .= ': '.$resolved['label'];
+                }
+                throw ValidationException::withMessages(['scheduled_at' => [$msg.'.']]);
+            }
+
+            if (! $resolved['opens_at'] || ! $resolved['closes_at']) {
                 throw ValidationException::withMessages(['scheduled_at' => ['El restaurante no opera en el día y hora seleccionados.']]);
             }
 
             $time = $scheduledAt->format('H:i:s');
+            $opens = $resolved['opens_at'].':00';
+            $closes = $resolved['closes_at'].':00';
 
-            if ($schedule->opens_at > $schedule->closes_at) {
-                // Overnight schedule (e.g., 20:00–02:00).
-                $withinSchedule = $time >= $schedule->opens_at || $time <= $schedule->closes_at;
+            if ($opens > $closes) {
+                $withinSchedule = $time >= $opens || $time <= $closes;
             } else {
-                $withinSchedule = $time >= $schedule->opens_at && $time <= $schedule->closes_at;
+                $withinSchedule = $time >= $opens && $time <= $closes;
             }
 
             if (! $withinSchedule) {
@@ -162,7 +175,7 @@ class OrderService
                 ->where('restaurant_id', $restaurant->id)
                 ->where('is_active', true)
                 ->whereIn('id', $promoIds)
-                ->with(['modifierGroups.options'])
+                ->with(['modifierGroups.options', 'modifierGroupTemplates.options'])
                 ->get()
                 ->filter(fn (Promotion $p) => $p->isCurrentlyActive())
                 ->keyBy('id');
@@ -198,67 +211,160 @@ class OrderService
             ]);
         }
 
-        // PASO 5 — Validate modifier options, required groups, and single-selection groups (unified).
+        // PASO 5 — Validate modifier options, required groups, single-selection, max_selections (both sources).
+        // $allValidOptions keyed by "inline_{id}" or "catalog_{id}" to avoid ID collisions.
         $allValidOptions = collect();
 
         foreach ($normalizedItems as $normalized) {
             $itemData = $normalized['data'];
             $entity = $normalized['entity'];
-            $itemOptionIds = collect($itemData['modifiers'] ?? [])->pluck('modifier_option_id')->filter()->unique()->values();
+            $modifiers = collect($itemData['modifiers'] ?? []);
 
-            if ($itemOptionIds->isNotEmpty()) {
-                // 5a — Validate options belong to this entity's modifier groups.
-                $itemValidOptions = ModifierOption::query()
-                    ->whereIn('id', $itemOptionIds)
-                    ->whereHas('modifierGroup', fn ($q) => $q->where('restaurant_id', $restaurant->id)->where($normalized['owner_column'], $normalized['owner_id']))
+            // Split modifiers by source.
+            $inlineModifiers = $modifiers->filter(fn ($m) => ! empty($m['modifier_option_id']));
+            $catalogModifiers = $modifiers->filter(fn ($m) => ! empty($m['modifier_option_template_id']));
+
+            // 5a — Validate inline modifier options belong to this entity's modifier groups.
+            $inlineOptionIds = $inlineModifiers->pluck('modifier_option_id')->unique()->values();
+            if ($inlineOptionIds->isNotEmpty()) {
+                $validInline = ModifierOption::query()
+                    ->whereIn('id', $inlineOptionIds)
+                    ->where('is_active', true)
+                    ->whereHas('modifierGroup', fn ($q) => $q
+                        ->where('restaurant_id', $restaurant->id)
+                        ->where('is_active', true)
+                        ->where($normalized['owner_column'], $normalized['owner_id']))
                     ->get()
                     ->keyBy('id');
 
-                if ($itemValidOptions->count() !== $itemOptionIds->count()) {
+                if ($validInline->count() !== $inlineOptionIds->count()) {
                     throw ValidationException::withMessages(['items' => ['Uno o más modificadores no son válidos para "'.$entity->name.'".']]);
                 }
 
-                foreach ($itemValidOptions as $id => $opt) {
-                    $allValidOptions->put($id, $opt);
+                foreach ($validInline as $id => $opt) {
+                    $allValidOptions->put('inline_'.$id, $opt);
                 }
             }
 
-            $sentOptionIds = collect($itemData['modifiers'] ?? [])->pluck('modifier_option_id')->toArray();
+            // 5a-catalog — Validate catalog modifier options belong to templates linked to the entity.
+            $catalogOptionIds = $catalogModifiers->pluck('modifier_option_template_id')->unique()->values();
+            if ($catalogOptionIds->isNotEmpty()) {
+                $linkedTemplateIds = $entity->modifierGroupTemplates()
+                    ->where('is_active', true)
+                    ->pluck('modifier_group_templates.id');
 
-            // 5b — Validate required modifier groups have at least one selection.
-            $requiredGroups = ModifierGroup::query()
+                $validCatalog = ModifierOptionTemplate::query()
+                    ->whereIn('id', $catalogOptionIds)
+                    ->where('is_active', true)
+                    ->whereIn('modifier_group_template_id', $linkedTemplateIds)
+                    ->get()
+                    ->keyBy('id');
+
+                if ($validCatalog->count() !== $catalogOptionIds->count()) {
+                    throw ValidationException::withMessages(['items' => ['Uno o más modificadores de catálogo no son válidos para "'.$entity->name.'".']]);
+                }
+
+                foreach ($validCatalog as $id => $opt) {
+                    $allValidOptions->put('catalog_'.$id, $opt);
+                }
+            }
+
+            // Build combined sent option arrays per-group for validation.
+            // 5b — Required groups (inline).
+            $sentInlineIds = $inlineModifiers->pluck('modifier_option_id')->toArray();
+
+            $requiredInlineGroups = ModifierGroup::query()
                 ->where($normalized['owner_column'], $normalized['owner_id'])
                 ->where('restaurant_id', $restaurant->id)
+                ->where('is_active', true)
                 ->where('is_required', true)
                 ->get();
 
-            foreach ($requiredGroups as $group) {
-                $groupOptionIds = $group->options()->pluck('id')->toArray();
-                if (empty(array_intersect($sentOptionIds, $groupOptionIds))) {
+            foreach ($requiredInlineGroups as $group) {
+                $groupOptionIds = $group->options()->where('is_active', true)->pluck('id')->toArray();
+                if (empty(array_intersect($sentInlineIds, $groupOptionIds))) {
                     throw ValidationException::withMessages([
                         'items' => ['El grupo de modificadores "'.$group->name.'" es obligatorio para "'.$entity->name.'".'],
                     ]);
                 }
             }
 
-            // 5c — Validate single-selection groups have at most one option.
-            $singleGroups = ModifierGroup::query()
+            // 5b-catalog — Required catalog groups linked to this entity (product or promotion).
+            $requiredCatalogGroups = $entity->modifierGroupTemplates()
+                ->where('is_active', true)
+                ->where('is_required', true)
+                ->get();
+
+            $sentCatalogIds = $catalogModifiers->pluck('modifier_option_template_id')->toArray();
+
+            foreach ($requiredCatalogGroups as $group) {
+                $groupOptionIds = $group->options()->where('is_active', true)->pluck('id')->toArray();
+                if (empty(array_intersect($sentCatalogIds, $groupOptionIds))) {
+                    throw ValidationException::withMessages([
+                        'items' => ['El grupo de modificadores "'.$group->name.'" es obligatorio para "'.$entity->name.'".'],
+                    ]);
+                }
+            }
+
+            // 5c — Single-selection validation (inline).
+            $singleInlineGroups = ModifierGroup::query()
                 ->where($normalized['owner_column'], $normalized['owner_id'])
                 ->where('restaurant_id', $restaurant->id)
+                ->where('is_active', true)
                 ->where('selection_type', 'single')
                 ->get();
 
-            foreach ($singleGroups as $group) {
-                $groupOptionIds = $group->options()->pluck('id')->toArray();
-                if (count(array_intersect($sentOptionIds, $groupOptionIds)) > 1) {
+            foreach ($singleInlineGroups as $group) {
+                $groupOptionIds = $group->options()->where('is_active', true)->pluck('id')->toArray();
+                if (count(array_intersect($sentInlineIds, $groupOptionIds)) > 1) {
                     throw ValidationException::withMessages([
                         'items' => ['El grupo "'.$group->name.'" solo permite una opción para "'.$entity->name.'".'],
                     ]);
                 }
             }
+
+            // 5c-catalog — Single-selection and max_selections validation (catalog).
+
+            $catalogGroups = $entity->modifierGroupTemplates()->where('is_active', true)->get();
+
+            foreach ($catalogGroups as $group) {
+                $groupOptionIds = $group->options()->where('is_active', true)->pluck('id')->toArray();
+                $selectedCount = count(array_intersect($sentCatalogIds, $groupOptionIds));
+
+                if ($group->selection_type === 'single' && $selectedCount > 1) {
+                    throw ValidationException::withMessages([
+                        'items' => ['El grupo "'.$group->name.'" solo permite una opción para "'.$entity->name.'".'],
+                    ]);
+                }
+
+                if ($group->max_selections && $selectedCount > $group->max_selections) {
+                    throw ValidationException::withMessages([
+                        'items' => ['El grupo "'.$group->name.'" permite máximo '.$group->max_selections.' opciones para "'.$entity->name.'".'],
+                    ]);
+                }
+            }
+
+            // 5d — max_selections validation for inline groups.
+            foreach ($singleInlineGroups->merge(ModifierGroup::query()
+                ->where($normalized['owner_column'], $normalized['owner_id'])
+                ->where('restaurant_id', $restaurant->id)
+                ->where('is_active', true)
+                ->where('selection_type', 'multiple')
+                ->whereNotNull('max_selections')
+                ->get()) as $group) {
+                if ($group->selection_type === 'multiple' && $group->max_selections) {
+                    $groupOptionIds = $group->options()->where('is_active', true)->pluck('id')->toArray();
+                    $selectedCount = count(array_intersect($sentInlineIds, $groupOptionIds));
+                    if ($selectedCount > $group->max_selections) {
+                        throw ValidationException::withMessages([
+                            'items' => ['El grupo "'.$group->name.'" permite máximo '.$group->max_selections.' opciones para "'.$entity->name.'".'],
+                        ]);
+                    }
+                }
+            }
         }
 
-        // PASO 6 — Anti-tampering: validate prices match the database (unified).
+        // PASO 6 — Anti-tampering: validate prices match the database (both sources).
         foreach ($normalizedItems as $normalized) {
             $entity = $normalized['entity'];
             $itemData = $normalized['data'];
@@ -269,7 +375,11 @@ class OrderService
             }
 
             foreach ($itemData['modifiers'] ?? [] as $modifierData) {
-                $option = $allValidOptions[$modifierData['modifier_option_id']];
+                if (! empty($modifierData['modifier_option_id'])) {
+                    $option = $allValidOptions['inline_'.$modifierData['modifier_option_id']];
+                } else {
+                    $option = $allValidOptions['catalog_'.$modifierData['modifier_option_template_id']];
+                }
 
                 if (abs((float) $modifierData['price_adjustment'] - (float) $option->price_adjustment) > 0.01) {
                     throw ValidationException::withMessages(['items' => ['El precio del modificador "'.$option->name.'" no coincide.']]);
@@ -282,7 +392,11 @@ class OrderService
         foreach ($normalizedItems as $normalized) {
             $entity = $normalized['entity'];
             $itemData = $normalized['data'];
-            $modifierTotal = collect($itemData['modifiers'] ?? [])->sum(fn (array $m) => (float) $allValidOptions[$m['modifier_option_id']]->price_adjustment);
+            $modifierTotal = collect($itemData['modifiers'] ?? [])->sum(function (array $m) use ($allValidOptions) {
+                $key = ! empty($m['modifier_option_id']) ? 'inline_'.$m['modifier_option_id'] : 'catalog_'.$m['modifier_option_template_id'];
+
+                return (float) $allValidOptions[$key]->price_adjustment;
+            });
             $subtotal += ((float) $entity->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
@@ -294,7 +408,29 @@ class OrderService
             $deliveryCost = $deliveryResult->deliveryCost;
         }
 
-        $total = $subtotal + $deliveryCost;
+        // PASO 7c — Coupon validation and discount calculation (server-side, anti-tampering).
+        $coupon = null;
+        $discountAmount = 0.0;
+        if (! empty($validated['coupon_code'])) {
+            $coupon = Coupon::query()
+                ->withoutGlobalScopes()
+                ->where('restaurant_id', $restaurant->id)
+                ->whereRaw('UPPER(code) = ?', [strtoupper($validated['coupon_code'])])
+                ->first();
+
+            if (! $coupon) {
+                throw ValidationException::withMessages(['coupon_code' => ['Cupón no encontrado.']]);
+            }
+
+            $couponCheck = $coupon->isValidForOrder($subtotal, $validated['customer']['phone']);
+            if (! $couponCheck['valid']) {
+                throw ValidationException::withMessages(['coupon_code' => [$couponCheck['reason']]]);
+            }
+
+            $discountAmount = $coupon->calculateDiscount($subtotal);
+        }
+
+        $total = $subtotal - $discountAmount + $deliveryCost;
 
         // Validate cash_amount covers the total.
         if (($validated['payment_method'] === 'cash') && ! empty($validated['cash_amount']) && ((float) $validated['cash_amount'] < $total)) {
@@ -304,7 +440,7 @@ class OrderService
         }
 
         // PASO 8 — Create Order inside transaction with limit re-check (prevents TOCTOU race condition).
-        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $normalizedItems, $allValidOptions, $subtotal, $deliveryCost, $distanceKm, $total): Order {
+        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $normalizedItems, $allValidOptions, $subtotal, $deliveryCost, $discountAmount, $distanceKm, $total, $coupon): Order {
             // Re-check order limit with a FOR UPDATE lock on the restaurant row.
             $lockedRestaurant = Restaurant::query()->lockForUpdate()->find($restaurant->id);
             if ($this->limitService->isOrderLimitReached($lockedRestaurant)) {
@@ -315,14 +451,18 @@ class OrderService
                 'restaurant_id' => $restaurant->id,
                 'branch_id' => $branch->id,
                 'customer_id' => $customer->id,
+                'coupon_id' => $coupon?->id,
+                'coupon_code' => $coupon?->code,
                 'delivery_type' => $validated['delivery_type'],
                 'status' => 'received',
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
                 'subtotal' => $subtotal,
                 'delivery_cost' => $deliveryCost,
+                'discount_amount' => $discountAmount,
                 'total' => $total,
                 'payment_method' => $validated['payment_method'],
                 'cash_amount' => $validated['cash_amount'] ?? null,
+                'requires_invoice' => $validated['requires_invoice'] ?? false,
                 'distance_km' => $distanceKm,
                 'address_street' => $validated['address_street'] ?? null,
                 'address_number' => $validated['address_number'] ?? null,
@@ -348,9 +488,15 @@ class OrderService
                 ]);
 
                 foreach ($itemData['modifiers'] ?? [] as $modifierData) {
-                    $option = $allValidOptions[$modifierData['modifier_option_id']];
+                    if (! empty($modifierData['modifier_option_id'])) {
+                        $option = $allValidOptions['inline_'.$modifierData['modifier_option_id']];
+                        $modifierOptionId = $option->id;
+                    } else {
+                        $option = $allValidOptions['catalog_'.$modifierData['modifier_option_template_id']];
+                        $modifierOptionId = null; // Catalog options live in a different table.
+                    }
                     $item->modifiers()->create([
-                        'modifier_option_id' => $option->id,
+                        'modifier_option_id' => $modifierOptionId,
                         'modifier_option_name' => $option->name,
                         'price_adjustment' => $option->price_adjustment,
                         'production_cost' => $option->production_cost,
@@ -367,11 +513,21 @@ class OrderService
                 'to_status' => 'received',
             ]);
 
+            // Record coupon usage (if a coupon was applied).
+            if ($coupon) {
+                CouponUse::create([
+                    'coupon_id' => $coupon->id,
+                    'order_id' => $order->id,
+                    'customer_phone' => $validated['customer']['phone'],
+                    'created_at' => now(),
+                ]);
+            }
+
             return $order;
         });
 
         // PASO 9 — Load relations needed for WhatsApp message.
-        $order->load(['items.modifiers', 'branch', 'customer']);
+        $order->load(['items.modifiers', 'branch', 'customer', 'restaurant']);
 
         $whatsappMessage = $this->buildWhatsAppMessage($order);
 
@@ -380,67 +536,69 @@ class OrderService
 
     private function buildWhatsAppMessage(Order $order): string
     {
-        $deliveryLine = match ($order->delivery_type) {
-            'delivery' => '🚗 *A domicilio*',
-            'pickup' => '🏪 *Recoger en local*',
-            'dine_in' => '🏪 *Comer en local*',
-            default => '',
-        };
+        $fmt = fn ($v) => '$'.number_format((float) $v, 2);
+        $orderNumber = '#'.str_pad((string) $order->id, 4, '0', STR_PAD_LEFT);
+        $restaurantName = $order->restaurant->name ?? '';
 
         $lines = [
-            'Hola! Quiero hacer un pedido:',
+            "Pedido {$orderNumber} — {$restaurantName}",
             '',
-            $deliveryLine,
+            "👤 Cliente: {$order->customer->name} | {$order->customer->phone}",
             '',
-            '🛒 *Mi pedido:*',
+            '🛒 Pedido:',
         ];
 
         foreach ($order->items as $item) {
-            $modifierNames = $item->modifiers
-                ->map(fn ($m) => $m->modifier_option_name)
-                ->filter()
-                ->join(', ');
-
             $modifierTotal = $item->modifiers->sum(fn ($m) => (float) $m->price_adjustment);
             $itemTotal = ((float) $item->unit_price + $modifierTotal) * $item->quantity;
 
-            $desc = "- {$item->quantity}x {$item->product_name}";
+            $lines[] = "• {$item->quantity}x {$item->product_name} - {$fmt($itemTotal)}";
 
-            if ($modifierNames) {
-                $desc .= " ({$modifierNames})";
+            foreach ($item->modifiers as $mod) {
+                $adj = (float) $mod->price_adjustment > 0 ? " (+{$fmt($mod->price_adjustment)})" : '';
+                $lines[] = "  ↳ {$mod->modifier_option_name}{$adj}";
             }
 
             if ($item->notes) {
-                $desc .= " - {$item->notes}";
-            }
-
-            $desc .= ' · $'.number_format($itemTotal, 2);
-            $lines[] = $desc;
-        }
-
-        if ($order->delivery_type === 'delivery' && $order->address_street) {
-            $address = "{$order->address_street} #{$order->address_number}, Col. {$order->address_colony}";
-            $lines[] = '';
-            $lines[] = "📍 *Direccion:* {$address}";
-
-            if ($order->address_references) {
-                $lines[] = "*Referencias:* {$order->address_references}";
-            }
-
-            if ($order->latitude && $order->longitude) {
-                $lines[] = "📌 *Ubicacion:* https://maps.google.com/?q={$order->latitude},{$order->longitude}";
+                $lines[] = "  📝 {$item->notes}";
             }
         }
 
         $lines[] = '';
-        $lines[] = '*Subtotal:* $'.number_format((float) $order->subtotal, 2);
 
+        // Delivery type section
         if ($order->delivery_type === 'delivery') {
-            $lines[] = '*Envio:* $'.number_format((float) $order->delivery_cost, 2);
+            $lines[] = '🚗 Tipo: A domicilio';
+            if ($order->address_street) {
+                $address = "{$order->address_street} {$order->address_number}";
+                if ($order->address_references) {
+                    $address .= " — {$order->address_references}";
+                }
+                $lines[] = "📍 Dirección: {$address}";
+            }
+            if ($order->branch) {
+                $lines[] = "🏪 Sucursal: {$order->branch->name}";
+            }
+            if ($order->distance_km) {
+                $lines[] = "📏 Distancia: {$order->distance_km} km";
+            }
+            if ($order->latitude && $order->longitude) {
+                $lines[] = "📌 Ubicación: https://maps.google.com/?q={$order->latitude},{$order->longitude}";
+            }
+        } elseif ($order->delivery_type === 'pickup') {
+            $lines[] = '🏪 Tipo: Recoger en sucursal';
+            if ($order->branch) {
+                $lines[] = "🏪 Sucursal: {$order->branch->name}";
+            }
+        } elseif ($order->delivery_type === 'dine_in') {
+            $lines[] = '🍽 Tipo: Comer en restaurante';
         }
 
-        $lines[] = '*Total:* $'.number_format((float) $order->total, 2);
         $lines[] = '';
+
+        if ($order->scheduled_at) {
+            $lines[] = '🕐 Programado para: '.$order->scheduled_at->format('d/m/Y, h:i a');
+        }
 
         $paymentLabel = match ($order->payment_method) {
             'cash' => 'Efectivo',
@@ -449,41 +607,27 @@ class OrderService
             default => $order->payment_method,
         };
 
-        $lines[] = "💳 *Pago:* {$paymentLabel}";
-
+        $lines[] = "💳 Pago: {$paymentLabel}";
         if ($order->payment_method === 'cash' && $order->cash_amount) {
-            $lines[] = '*Paga con:* $'.number_format((float) $order->cash_amount, 2);
-            $change = (float) $order->cash_amount - (float) $order->total;
-            if ($change > 0) {
-                $lines[] = '*Cambio:* $'.number_format($change, 2);
-            }
-        }
-
-        if ($order->payment_method === 'transfer') {
-            $transferPm = PaymentMethod::query()
-                ->where('restaurant_id', $order->restaurant_id)
-                ->where('type', 'transfer')
-                ->first();
-
-            if ($transferPm) {
-                if ($transferPm->bank_name) {
-                    $lines[] = "*Banco:* {$transferPm->bank_name}";
-                }
-                if ($transferPm->account_holder) {
-                    $lines[] = "*Titular:* {$transferPm->account_holder}";
-                }
-                if ($transferPm->clabe) {
-                    $lines[] = "*CLABE:* {$transferPm->clabe}";
-                }
-            }
-        }
-
-        if ($order->scheduled_at) {
-            $lines[] = '🕐 *Hora programada:* '.$order->scheduled_at->format('H:i');
+            $lines[] = "💵 Paga con: {$fmt($order->cash_amount)}";
         }
 
         $lines[] = '';
-        $lines[] = 'Gracias!';
+        $lines[] = "Subtotal: {$fmt($order->subtotal)}";
+
+        if ($order->delivery_type === 'delivery') {
+            $lines[] = "Envío: {$fmt($order->delivery_cost)}";
+        }
+
+        if ((float) $order->discount_amount > 0) {
+            $lines[] = "🏷 Cupón ({$order->coupon_code}): -{$fmt($order->discount_amount)}";
+        }
+
+        $lines[] = "Total: {$fmt($order->total)}";
+
+        if ($order->requires_invoice) {
+            $lines[] = '📋 Requiere factura';
+        }
 
         return implode("\n", $lines);
     }

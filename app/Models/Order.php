@@ -17,14 +17,18 @@ class Order extends Model
         'restaurant_id',
         'branch_id',
         'customer_id',
+        'coupon_id',
+        'coupon_code',
         'delivery_type',
         'status',
         'scheduled_at',
         'subtotal',
         'delivery_cost',
+        'discount_amount',
         'total',
         'payment_method',
         'cash_amount',
+        'requires_invoice',
         'distance_km',
         'address_street',
         'address_number',
@@ -34,6 +38,8 @@ class Order extends Model
         'longitude',
         'cancellation_reason',
         'cancelled_at',
+        'edited_at',
+        'edit_count',
     ];
 
     protected function casts(): array
@@ -42,12 +48,16 @@ class Order extends Model
             'scheduled_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'delivery_cost' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'cash_amount' => 'decimal:2',
+            'requires_invoice' => 'boolean',
             'distance_km' => 'decimal:2',
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
             'cancelled_at' => 'datetime',
+            'edited_at' => 'datetime',
+            'edit_count' => 'integer',
         ];
     }
 
@@ -66,7 +76,17 @@ class Order extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
+    }
+
     public function isCancellable(): bool
+    {
+        return in_array($this->status, ['received', 'preparing']);
+    }
+
+    public function isEditable(): bool
     {
         return in_array($this->status, ['received', 'preparing']);
     }
@@ -79,5 +99,10 @@ class Order extends Model
     public function events(): HasMany
     {
         return $this->hasMany(OrderEvent::class)->orderBy('created_at');
+    }
+
+    public function audits(): HasMany
+    {
+        return $this->hasMany(OrderAudit::class)->orderBy('created_at');
     }
 }

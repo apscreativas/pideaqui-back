@@ -309,6 +309,9 @@ class OrderApiTest extends TestCase
         $this->assertStringContainsString('$50.00', $message);  // 2 × $25
         $this->assertStringContainsString('$80.00', $message);  // total
         $this->assertStringContainsString('A domicilio', $message);
+        $this->assertStringContainsString($restaurant->name, $message);
+        $this->assertStringContainsString('María García', $message);
+        $this->assertStringContainsString('5598765432', $message);
     }
 
     public function test_order_number_is_zero_padded(): void
@@ -857,5 +860,282 @@ class OrderApiTest extends TestCase
         ], $this->authHeaders($restaurant))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
+    }
+
+    // ─── Requires Invoice ────────────────────────────────────────────────────
+
+    public function test_order_saves_requires_invoice_true(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product, ['requires_invoice' => true]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $this->assertDatabaseHas('orders', [
+            'restaurant_id' => $restaurant->id,
+            'requires_invoice' => true,
+        ]);
+    }
+
+    public function test_order_defaults_requires_invoice_to_false(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $this->assertDatabaseHas('orders', [
+            'restaurant_id' => $restaurant->id,
+            'requires_invoice' => false,
+        ]);
+    }
+
+    public function test_whatsapp_message_includes_invoice_flag_when_true(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $response = $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product, ['requires_invoice' => true]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $this->assertStringContainsString('Requiere factura', $response->json('data.whatsapp_message'));
+    }
+
+    public function test_whatsapp_message_omits_invoice_flag_when_false(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $response = $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product, ['requires_invoice' => false]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $this->assertStringNotContainsString('factura', $response->json('data.whatsapp_message'));
+    }
+
+    // ─── WhatsApp message format per delivery type ──────────────────────────
+
+    public function test_whatsapp_delivery_message_includes_address_and_branch(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant, 0, 10, 30.00);
+
+        $response = $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('🚗 Tipo: A domicilio', $message);
+        $this->assertStringContainsString('📍 Dirección:', $message);
+        $this->assertStringContainsString('🏪 Sucursal:', $message);
+        $this->assertStringContainsString('📏 Distancia:', $message);
+        $this->assertStringContainsString('📌 Ubicación: https://maps.google.com/?q=', $message);
+        $this->assertStringContainsString('Envío:', $message);
+    }
+
+    public function test_whatsapp_pickup_message_omits_address_and_delivery_cost(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+
+        $response = $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product, ['delivery_type' => 'pickup']),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('🏪 Tipo: Recoger en sucursal', $message);
+        $this->assertStringContainsString('🏪 Sucursal:', $message);
+        $this->assertStringNotContainsString('Dirección:', $message);
+        $this->assertStringNotContainsString('Distancia:', $message);
+        $this->assertStringNotContainsString('Ubicación:', $message);
+        $this->assertStringNotContainsString('Envío:', $message);
+    }
+
+    public function test_whatsapp_dine_in_message_minimal(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+
+        $response = $this->postJson(
+            '/api/orders',
+            $this->deliveryPayload($branch, $product, ['delivery_type' => 'dine_in']),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('🍽 Tipo: Comer en restaurante', $message);
+        $this->assertStringNotContainsString('Dirección:', $message);
+        $this->assertStringNotContainsString('Sucursal:', $message);
+        $this->assertStringNotContainsString('Distancia:', $message);
+        $this->assertStringNotContainsString('Envío:', $message);
+    }
+
+    public function test_whatsapp_message_with_modifiers(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 50.00);
+        $product->update(['name' => 'Hamburguesa']);
+        $this->withDeliveryRange($restaurant);
+
+        $group = ModifierGroup::create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+            'name' => 'Extras',
+            'selection_type' => 'multiple',
+            'is_required' => false,
+            'is_active' => true,
+            'sort_order' => 0,
+        ]);
+
+        $option = ModifierOption::create([
+            'modifier_group_id' => $group->id,
+            'name' => 'Queso Extra',
+            'price_adjustment' => 15.00,
+            'production_cost' => 5.00,
+            'is_active' => true,
+            'sort_order' => 0,
+        ]);
+
+        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 50.00,
+                'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 15.00]],
+            ]],
+        ]), $this->authHeaders($restaurant))->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('Hamburguesa', $message);
+        $this->assertStringContainsString('↳ Queso Extra (+$15.00)', $message);
+        $this->assertStringContainsString('$65.00', $message); // 50 + 15
+    }
+
+    public function test_whatsapp_message_with_scheduled_at(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        // Use a time within today's schedule (which covers 00:00-23:59 for today's day_of_week).
+        $scheduledAt = now()->copy()->setTime(14, 0)->startOfMinute();
+        if ($scheduledAt->isPast()) {
+            $scheduledAt = now()->addMinutes(30)->startOfMinute();
+        }
+
+        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
+            'scheduled_at' => $scheduledAt->toISOString(),
+        ]), $this->authHeaders($restaurant))->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('🕐 Programado para:', $message);
+    }
+
+    public function test_whatsapp_message_with_cash_payment(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
+            'cash_amount' => 100.00,
+        ]), $this->authHeaders($restaurant))->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('💳 Pago: Efectivo', $message);
+        $this->assertStringContainsString('💵 Paga con: $100.00', $message);
+    }
+
+    public function test_whatsapp_message_modifier_without_price_omits_adjustment(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 50.00);
+        $this->withDeliveryRange($restaurant);
+
+        $group = ModifierGroup::create([
+            'restaurant_id' => $restaurant->id,
+            'product_id' => $product->id,
+            'name' => 'Salsa',
+            'selection_type' => 'single',
+            'is_required' => false,
+            'is_active' => true,
+            'sort_order' => 0,
+        ]);
+
+        $option = ModifierOption::create([
+            'modifier_group_id' => $group->id,
+            'name' => 'Salsa Verde',
+            'price_adjustment' => 0.00,
+            'production_cost' => 0.00,
+            'is_active' => true,
+            'sort_order' => 0,
+        ]);
+
+        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 50.00,
+                'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 0.00]],
+            ]],
+        ]), $this->authHeaders($restaurant))->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('↳ Salsa Verde', $message);
+        $this->assertStringNotContainsString('↳ Salsa Verde (+', $message);
+    }
+
+    public function test_whatsapp_message_includes_item_notes(): void
+    {
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 25.00,
+                'notes' => 'Sin cebolla',
+                'modifiers' => [],
+            ]],
+        ]), $this->authHeaders($restaurant))->assertCreated();
+
+        $message = $response->json('data.whatsapp_message');
+        $this->assertStringContainsString('📝 Sin cebolla', $message);
     }
 }
