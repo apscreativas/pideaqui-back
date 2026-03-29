@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateBrandingRequest;
 use App\Http\Requests\UpdateGeneralSettingsRequest;
 use App\Http\Requests\UpdateRestaurantScheduleRequest;
 use App\Models\Restaurant;
@@ -66,8 +67,20 @@ class SettingsController extends Controller
                 'is_closed' => $s->is_closed,
             ]);
 
+        $specialDates = $restaurant->specialDates()->orderBy('date')->get()
+            ->map(fn ($sd) => [
+                'id' => $sd->id,
+                'date' => $sd->date->toDateString(),
+                'type' => $sd->type,
+                'opens_at' => $sd->opens_at ? substr($sd->opens_at, 0, 5) : null,
+                'closes_at' => $sd->closes_at ? substr($sd->closes_at, 0, 5) : null,
+                'label' => $sd->label,
+                'is_recurring' => $sd->is_recurring,
+            ]);
+
         return Inertia::render('Settings/Schedules', [
             'schedules' => $schedules,
+            'specialDates' => $specialDates,
         ]);
     }
 
@@ -88,5 +101,45 @@ class SettingsController extends Controller
         }
 
         return back()->with('success', 'Horarios actualizados.');
+    }
+
+    public function branding(Request $request): Response
+    {
+        $restaurant = $request->user()->load('restaurant')->restaurant;
+
+        return Inertia::render('Settings/Branding', [
+            'restaurant' => array_merge(
+                $restaurant->only(['primary_color', 'secondary_color', 'default_product_image', 'text_color']),
+                ['default_product_image_url' => $restaurant->default_product_image_url],
+            ),
+        ]);
+    }
+
+    public function updateBranding(UpdateBrandingRequest $request): RedirectResponse
+    {
+        $restaurant = $request->user()->load('restaurant')->restaurant;
+
+        $data = $request->validated();
+
+        if ($request->boolean('remove_default_image')) {
+            if ($restaurant->default_product_image) {
+                Storage::disk(config('filesystems.media_disk', 'public'))->delete($restaurant->default_product_image);
+            }
+            $data['default_product_image'] = null;
+        } elseif ($request->hasFile('default_product_image')) {
+            if ($restaurant->default_product_image) {
+                Storage::disk(config('filesystems.media_disk', 'public'))->delete($restaurant->default_product_image);
+            }
+            $data['default_product_image'] = $request->file('default_product_image')
+                ->store("restaurants/{$restaurant->id}", config('filesystems.media_disk', 'public'));
+        } else {
+            unset($data['default_product_image']);
+        }
+
+        unset($data['remove_default_image']);
+
+        $restaurant->update($data);
+
+        return back()->with('success', 'Personalización guardada.');
     }
 }

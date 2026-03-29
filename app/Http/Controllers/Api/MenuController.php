@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MenuCategoryResource;
-use App\Http\Resources\ModifierGroupResource;
 use App\Models\Category;
 use App\Models\Promotion;
 use App\Models\Restaurant;
@@ -29,7 +28,13 @@ class MenuController extends Controller
                         ->orderBy('id')
                         ->with([
                             'modifierGroups' => function ($q): void {
-                                $q->orderBy('modifier_groups.sort_order')->with('options');
+                                $q->where('is_active', true)
+                                    ->orderBy('modifier_groups.sort_order')
+                                    ->with(['options' => fn ($oq) => $oq->where('is_active', true)]);
+                            },
+                            'modifierGroupTemplates' => function ($q): void {
+                                $q->where('is_active', true)
+                                    ->with(['options' => fn ($oq) => $oq->where('is_active', true)]);
                             },
                         ]);
                 },
@@ -61,7 +66,17 @@ class MenuController extends Controller
         $promotions = Promotion::query()
             ->where('restaurant_id', $restaurant->id)
             ->where('is_active', true)
-            ->with(['modifierGroups' => fn ($q) => $q->orderBy('sort_order')->with('options')])
+            ->with([
+                'modifierGroups' => function ($q): void {
+                    $q->where('is_active', true)
+                        ->orderBy('sort_order')
+                        ->with(['options' => fn ($oq) => $oq->where('is_active', true)]);
+                },
+                'modifierGroupTemplates' => function ($q): void {
+                    $q->where('is_active', true)
+                        ->with(['options' => fn ($oq) => $oq->where('is_active', true)]);
+                },
+            ])
             ->orderBy('sort_order')
             ->get();
 
@@ -82,7 +97,7 @@ class MenuController extends Controller
             'image_url' => $promo->image_path
                 ? Storage::disk($mediaDisk)->url($promo->image_path)
                 : null,
-            'modifier_groups' => ModifierGroupResource::collection($promo->modifierGroups)->resolve(),
+            'modifier_groups' => $promo->getAllModifierGroups(),
             'is_promotion' => true,
         ]);
 

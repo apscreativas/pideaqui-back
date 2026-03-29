@@ -327,6 +327,32 @@ class OrderAdminTest extends TestCase
         $response->assertInertia(fn ($page) => $page->missing('orders.cancelled'));
     }
 
+    // ─── Invoice filter ─────────────────────────────────────────────────────────
+
+    public function test_requires_invoice_filter_shows_only_invoice_orders(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $this->createOrder($restaurant->id, ['status' => 'received', 'requires_invoice' => true]);
+        $this->createOrder($restaurant->id, ['status' => 'received', 'requires_invoice' => false]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('orders.index', ['requires_invoice' => 1]));
+
+        $response->assertInertia(fn ($page) => $page->has('orders.received', 1));
+    }
+
+    public function test_without_invoice_filter_shows_all_orders(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $this->createOrder($restaurant->id, ['status' => 'received', 'requires_invoice' => true]);
+        $this->createOrder($restaurant->id, ['status' => 'received', 'requires_invoice' => false]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('orders.index'));
+
+        $response->assertInertia(fn ($page) => $page->has('orders.received', 2));
+    }
+
     // ─── Auth ──────────────────────────────────────────────────────────────────
 
     public function test_unauthenticated_user_redirected_from_orders(): void

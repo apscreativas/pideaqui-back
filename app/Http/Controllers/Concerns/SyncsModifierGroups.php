@@ -25,6 +25,8 @@ trait SyncsModifierGroups
                     'name' => $groupData['name'],
                     'selection_type' => $groupData['selection_type'],
                     'is_required' => $groupData['is_required'] ?? false,
+                    'is_active' => $groupData['is_active'] ?? true,
+                    'max_selections' => ($groupData['selection_type'] ?? 'single') === 'multiple' ? ($groupData['max_selections'] ?? null) : null,
                     'sort_order' => $sortOrder,
                 ]);
                 $incomingGroupIds[] = $group->id;
@@ -38,6 +40,7 @@ trait SyncsModifierGroups
                             'name' => $optData['name'],
                             'price_adjustment' => $optData['price_adjustment'] ?? 0,
                             'production_cost' => $optData['production_cost'] ?? 0,
+                            'is_active' => $optData['is_active'] ?? true,
                             'sort_order' => $optSort,
                         ]);
                         $incomingOptionIds[] = $optData['id'];
@@ -46,6 +49,7 @@ trait SyncsModifierGroups
                             'name' => $optData['name'],
                             'price_adjustment' => $optData['price_adjustment'] ?? 0,
                             'production_cost' => $optData['production_cost'] ?? 0,
+                            'is_active' => $optData['is_active'] ?? true,
                             'sort_order' => $optSort,
                         ]);
                         $incomingOptionIds[] = $newOpt->id;
@@ -59,6 +63,8 @@ trait SyncsModifierGroups
                     'name' => $groupData['name'],
                     'selection_type' => $groupData['selection_type'],
                     'is_required' => $groupData['is_required'] ?? false,
+                    'is_active' => $groupData['is_active'] ?? true,
+                    'max_selections' => ($groupData['selection_type'] ?? 'single') === 'multiple' ? ($groupData['max_selections'] ?? null) : null,
                     'sort_order' => $sortOrder,
                 ]);
                 $incomingGroupIds[] = $group->id;

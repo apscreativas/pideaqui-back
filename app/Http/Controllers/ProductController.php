@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
+use App\Models\ModifierGroupTemplate;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,9 +22,14 @@ class ProductController extends Controller
         $this->authorize('create', Product::class);
 
         $categories = Category::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $catalogTemplates = ModifierGroupTemplate::with('options')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
 
         return Inertia::render('Products/Create', [
             'categories' => $categories,
+            'catalogTemplates' => $catalogTemplates,
         ]);
     }
 
@@ -41,11 +47,13 @@ class ProductController extends Controller
         }
 
         $modifierGroups = $data['modifier_groups'] ?? [];
-        unset($data['image'], $data['modifier_groups']);
+        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
+        unset($data['image'], $data['modifier_groups'], $data['catalog_template_ids']);
 
         $product = Product::query()->create($data);
 
         $this->syncModifierGroups($product, $modifierGroups);
+        $this->syncCatalogTemplates($product, $catalogTemplateIds);
 
         return redirect()->route('menu.index')->with('success', 'Producto creado correctamente.');
     }
@@ -55,11 +63,17 @@ class ProductController extends Controller
         $this->authorize('update', $product);
 
         $categories = Category::orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
-        $product->load('modifierGroups.options');
+        $product->load(['modifierGroups.options', 'modifierGroupTemplates.options']);
+
+        $catalogTemplates = ModifierGroupTemplate::with('options')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
 
         return Inertia::render('Products/Edit', [
             'product' => $product,
             'categories' => $categories,
+            'catalogTemplates' => $catalogTemplates,
         ]);
     }
 
@@ -78,11 +92,13 @@ class ProductController extends Controller
         }
 
         $modifierGroups = $data['modifier_groups'] ?? [];
-        unset($data['image'], $data['modifier_groups']);
+        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
+        unset($data['image'], $data['modifier_groups'], $data['catalog_template_ids']);
 
         $product->update($data);
 
         $this->syncModifierGroups($product, $modifierGroups);
+        $this->syncCatalogTemplates($product, $catalogTemplateIds);
 
         return redirect()->route('menu.index')->with('success', 'Producto actualizado correctamente.');
     }
@@ -107,6 +123,18 @@ class ProductController extends Controller
         $product->update(['is_active' => ! $product->is_active]);
 
         return redirect()->route('menu.index');
+    }
+
+    /**
+     * @param  array<int, int>  $templateIds
+     */
+    private function syncCatalogTemplates(Product $product, array $templateIds): void
+    {
+        $syncData = [];
+        foreach ($templateIds as $sortOrder => $templateId) {
+            $syncData[$templateId] = ['sort_order' => $sortOrder];
+        }
+        $product->modifierGroupTemplates()->sync($syncData);
     }
 
     public function reorder(Request $request): RedirectResponse

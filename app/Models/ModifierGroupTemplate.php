@@ -6,24 +6,23 @@ use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ModifierGroup extends Model
+class ModifierGroupTemplate extends Model
 {
-    /** @use HasFactory<\Database\Factories\ModifierGroupFactory> */
+    /** @use HasFactory<\Database\Factories\ModifierGroupTemplateFactory> */
     use BelongsToTenant, HasFactory;
 
     public $timestamps = false;
 
     protected $fillable = [
         'restaurant_id',
-        'product_id',
-        'promotion_id',
         'name',
         'selection_type',
         'is_required',
-        'is_active',
         'max_selections',
+        'is_active',
         'sort_order',
     ];
 
@@ -31,8 +30,8 @@ class ModifierGroup extends Model
     {
         return [
             'is_required' => 'boolean',
-            'is_active' => 'boolean',
             'max_selections' => 'integer',
+            'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
     }
@@ -42,18 +41,14 @@ class ModifierGroup extends Model
         return $this->belongsTo(Restaurant::class);
     }
 
-    public function product(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
-    }
-
-    public function promotion(): BelongsTo
-    {
-        return $this->belongsTo(Promotion::class);
-    }
-
     public function options(): HasMany
     {
-        return $this->hasMany(ModifierOption::class)->orderBy('sort_order');
+        return $this->hasMany(ModifierOptionTemplate::class)->orderBy('sort_order');
+    }
+
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'product_modifier_group_template')
+            ->withPivot('sort_order');
     }
 }

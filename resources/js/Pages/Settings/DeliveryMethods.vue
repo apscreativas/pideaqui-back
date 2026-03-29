@@ -106,7 +106,7 @@ const activeCount = computed(() => {
                                 >
                                     <span class="material-symbols-outlined text-sm" aria-hidden="true">warning</span>
                                     Primero
-                                    <Link :href="route('settings.shipping-rates.index')" class="underline font-medium hover:text-amber-700">configura tus tarifas de envio</Link>
+                                    <Link :href="route('settings.shipping-rates')" class="underline font-medium hover:text-amber-700">configura tus tarifas de envio</Link>
                                     para poder activar esta opcion.
                                 </p>
                             </div>

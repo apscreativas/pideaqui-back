@@ -18,6 +18,7 @@ class RestaurantController extends Controller
             'paymentMethods',
             'branches' => fn ($q) => $q->where('is_active', true),
             'schedules',
+            'specialDates',
         ]);
 
         return (new RestaurantResource($restaurant))->response();

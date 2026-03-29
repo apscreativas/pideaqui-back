@@ -7,7 +7,8 @@ const NAV = [
     { label: 'Métodos de entrega', icon: 'two_wheeler',       route: 'settings.delivery-methods' },
     { label: 'Tarifas de envío',   icon: 'local_shipping',    route: 'settings.shipping-rates' },
     { label: 'Métodos de pago',    icon: 'payments',          route: 'settings.payment-methods' },
-{ label: 'Usuarios',           icon: 'group',             route: 'settings.users' },
+    { label: 'Personalización',    icon: 'palette',           route: 'settings.branding' },
+    { label: 'Usuarios',           icon: 'group',             route: 'settings.users' },
     { label: 'Mi cuenta',          icon: 'manage_accounts',   route: 'settings.profile' },
     { label: 'Mis límites',        icon: 'monitor_heart',     route: 'settings.limits' },
 ]

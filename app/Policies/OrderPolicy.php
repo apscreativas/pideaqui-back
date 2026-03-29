@@ -24,6 +24,13 @@ class OrderPolicy
             && $this->canAccessBranch($user, $order->branch_id);
     }
 
+    public function edit(User $user, Order $order): bool
+    {
+        return $user->restaurant_id === $order->restaurant_id
+            && $order->isEditable()
+            && $this->canAccessBranch($user, $order->branch_id);
+    }
+
     public function cancel(User $user, Order $order): bool
     {
         return $user->restaurant_id === $order->restaurant_id

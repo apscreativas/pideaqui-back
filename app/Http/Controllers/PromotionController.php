@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePromotionRequest;
 use App\Http\Requests\UpdatePromotionRequest;
+use App\Models\ModifierGroupTemplate;
 use App\Models\Promotion;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,14 @@ class PromotionController extends Controller
     {
         $this->authorize('create', Promotion::class);
 
-        return Inertia::render('Promotions/Create');
+        $catalogTemplates = ModifierGroupTemplate::with('options')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+
+        return Inertia::render('Promotions/Create', [
+            'catalogTemplates' => $catalogTemplates,
+        ]);
     }
 
     public function store(StorePromotionRequest $request): RedirectResponse
@@ -52,11 +60,13 @@ class PromotionController extends Controller
         }
 
         $modifierGroups = $data['modifier_groups'] ?? [];
-        unset($data['image'], $data['modifier_groups']);
+        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
+        unset($data['image'], $data['modifier_groups'], $data['catalog_template_ids']);
 
         $promotion = Promotion::query()->create($data);
 
         $this->syncModifierGroups($promotion, $modifierGroups);
+        $this->syncCatalogTemplates($promotion, $catalogTemplateIds);
 
         return redirect()->route('promotions.index')->with('success', 'Promoción creada correctamente.');
     }
@@ -65,10 +75,16 @@ class PromotionController extends Controller
     {
         $this->authorize('update', $promotion);
 
-        $promotion->load('modifierGroups.options');
+        $promotion->load(['modifierGroups.options', 'modifierGroupTemplates.options']);
+
+        $catalogTemplates = ModifierGroupTemplate::with('options')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
 
         return Inertia::render('Promotions/Edit', [
             'promotion' => $promotion,
+            'catalogTemplates' => $catalogTemplates,
         ]);
     }
 
@@ -89,11 +105,13 @@ class PromotionController extends Controller
         }
 
         $modifierGroups = $data['modifier_groups'] ?? [];
-        unset($data['image'], $data['modifier_groups']);
+        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
+        unset($data['image'], $data['modifier_groups'], $data['catalog_template_ids']);
 
         $promotion->update($data);
 
         $this->syncModifierGroups($promotion, $modifierGroups);
+        $this->syncCatalogTemplates($promotion, $catalogTemplateIds);
 
         return redirect()->route('promotions.index')->with('success', 'Promoción actualizada correctamente.');
     }
@@ -118,6 +136,18 @@ class PromotionController extends Controller
         $promotion->update(['is_active' => ! $promotion->is_active]);
 
         return redirect()->route('promotions.index');
+    }
+
+    /**
+     * @param  array<int, int>  $templateIds
+     */
+    private function syncCatalogTemplates(Promotion $promotion, array $templateIds): void
+    {
+        $syncData = [];
+        foreach ($templateIds as $sortOrder => $templateId) {
+            $syncData[$templateId] = ['sort_order' => $sortOrder];
+        }
+        $promotion->modifierGroupTemplates()->sync($syncData);
     }
 
     public function reorder(Request $request): RedirectResponse

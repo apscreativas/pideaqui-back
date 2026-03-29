@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Coupon;
 use App\Models\ModifierGroup;
 use App\Models\ModifierOption;
 use App\Models\ModifierOptionTemplate;
@@ -20,6 +19,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class OrderEditService
 {
     /**
+     * 
      * @param  array<string, mixed>  $validated
      *
      * @throws ValidationException|HttpException
@@ -30,7 +30,7 @@ class OrderEditService
         if (! $order->isEditable()) {
             throw ValidationException::withMessages(['order' => ['Este pedido ya no puede ser editado.']]);
         }
-
+*
         // 2 — Optimistic lock
         $expectedUpdatedAt = Carbon::parse($validated['expected_updated_at']);
         if ($order->updated_at->ne($expectedUpdatedAt)) {
@@ -41,16 +41,12 @@ class OrderEditService
         $oldTotal = (float) $order->total;
         $reason = $validated['reason'] ?? null;
 
-        return DB::transaction(function () use ($order, $validated, $user, $restaurant, $oldTotal, $reason, $ipAddress, $expectedUpdatedAt): Order {
-            // 3 — Lock order row and re-check status + optimistic lock
+        return DB::transaction(function () use ($order, $validated, $user, $restaurant, $oldTotal, $reason, $ipAddress): Order {
+            // 3 — Lock order row and re-check status
             $order = Order::query()->lockForUpdate()->find($order->id);
 
             if (! $order->isEditable()) {
                 throw ValidationException::withMessages(['order' => ['Este pedido ya no puede ser editado.']]);
-            }
-
-            if ($order->updated_at->ne($expectedUpdatedAt)) {
-                throw new HttpException(409, 'Este pedido fue modificado por otro usuario. Recarga para ver los cambios.');
             }
 
             $auditEntries = [];
@@ -194,20 +190,7 @@ class OrderEditService
             $subtotal += ((float) $entity->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
-        // Recalculate coupon discount if order has one
-        $discountAmount = 0.0;
-        if ($order->coupon_id) {
-            $coupon = Coupon::query()->withoutGlobalScopes()->find($order->coupon_id);
-            if ($coupon && $subtotal >= (float) $coupon->min_purchase) {
-                $discountAmount = $coupon->calculateDiscount($subtotal);
-            } else {
-                // Coupon no longer valid for new subtotal — remove it
-                $order->coupon_id = null;
-                $order->coupon_code = null;
-            }
-        }
-
-        $total = $subtotal - $discountAmount + (float) $order->delivery_cost;
+        $total = $subtotal + (float) $order->delivery_cost;
 
         if ($total <= 0) {
             throw ValidationException::withMessages(['items' => ['El total del pedido debe ser mayor a cero.']]);
@@ -263,7 +246,6 @@ class OrderEditService
 
         // Update order totals
         $order->subtotal = $subtotal;
-        $order->discount_amount = $discountAmount;
         $order->total = $total;
 
         return ['action' => 'items_modified', 'changes' => $diff];

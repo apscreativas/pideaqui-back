@@ -27,16 +27,21 @@ class StorePromotionRequest extends FormRequest
             'active_days.*' => ['integer', 'between:0,6'],
             'starts_at' => ['nullable', 'date_format:H:i'],
             'ends_at' => ['nullable', 'date_format:H:i'],
+            'catalog_template_ids' => ['nullable', 'array'],
+            'catalog_template_ids.*' => ['integer', 'exists:modifier_group_templates,id'],
             'modifier_groups' => ['nullable', 'array'],
             'modifier_groups.*.id' => ['nullable', 'integer'],
             'modifier_groups.*.name' => ['required', 'string', 'max:255'],
             'modifier_groups.*.selection_type' => ['required', 'in:single,multiple'],
             'modifier_groups.*.is_required' => ['boolean'],
+            'modifier_groups.*.is_active' => ['boolean'],
+            'modifier_groups.*.max_selections' => ['nullable', 'integer', 'min:2'],
             'modifier_groups.*.options' => ['required', 'array', 'min:1'],
             'modifier_groups.*.options.*.id' => ['nullable', 'integer'],
             'modifier_groups.*.options.*.name' => ['required', 'string', 'max:255'],
             'modifier_groups.*.options.*.price_adjustment' => ['numeric', 'min:0'],
             'modifier_groups.*.options.*.production_cost' => ['nullable', 'numeric', 'min:0'],
+            'modifier_groups.*.options.*.is_active' => ['boolean'],
         ];
     }
 

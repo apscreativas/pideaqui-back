@@ -6,15 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ModifierOption extends Model
+class ModifierOptionTemplate extends Model
 {
-    /** @use HasFactory<\Database\Factories\ModifierOptionFactory> */
+    /** @use HasFactory<\Database\Factories\ModifierOptionTemplateFactory> */
     use HasFactory;
 
     public $timestamps = false;
 
     protected $fillable = [
-        'modifier_group_id',
+        'modifier_group_template_id',
         'name',
         'price_adjustment',
         'production_cost',
@@ -32,8 +32,8 @@ class ModifierOption extends Model
         ];
     }
 
-    public function modifierGroup(): BelongsTo
+    public function modifierGroupTemplate(): BelongsTo
     {
-        return $this->belongsTo(ModifierGroup::class);
+        return $this->belongsTo(ModifierGroupTemplate::class);
     }
 }
