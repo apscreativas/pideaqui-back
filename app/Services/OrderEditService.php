@@ -19,7 +19,6 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class OrderEditService
 {
     /**
-     * 
      * @param  array<string, mixed>  $validated
      *
      * @throws ValidationException|HttpException
@@ -30,7 +29,7 @@ class OrderEditService
         if (! $order->isEditable()) {
             throw ValidationException::withMessages(['order' => ['Este pedido ya no puede ser editado.']]);
         }
-*
+
         // 2 — Optimistic lock
         $expectedUpdatedAt = Carbon::parse($validated['expected_updated_at']);
         if ($order->updated_at->ne($expectedUpdatedAt)) {

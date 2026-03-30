@@ -105,6 +105,7 @@ class RestaurantController extends Controller
 
         $admin = User::query()
             ->where('restaurant_id', $restaurant->id)
+            ->where('role', 'admin')
             ->first(['id', 'name', 'email']);
 
         return Inertia::render('SuperAdmin/Restaurants/Show', [
@@ -144,6 +145,7 @@ class RestaurantController extends Controller
     {
         $admin = User::query()
             ->where('restaurant_id', $restaurant->id)
+            ->where('role', 'admin')
             ->firstOrFail();
 
         $admin->update(['password' => $request->validated('password')]);

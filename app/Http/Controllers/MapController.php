@@ -7,6 +7,7 @@ use App\Models\Order;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -14,15 +15,15 @@ class MapController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $restaurantId = $user->restaurant_id;
+
         $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
-            'branch_id' => ['nullable', 'integer'],
+            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('restaurant_id', $restaurantId)],
             'statuses' => ['nullable', 'string'],
         ]);
-
-        $user = $request->user();
-        $restaurantId = $user->restaurant_id;
         $allowedBranches = $user->allowedBranchIds();
 
         $from = $request->input('from') ? Carbon::parse($request->input('from'))->startOfDay() : today()->startOfDay();

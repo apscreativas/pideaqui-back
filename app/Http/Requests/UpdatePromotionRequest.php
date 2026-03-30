@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePromotionRequest extends FormRequest
 {
@@ -28,7 +29,7 @@ class UpdatePromotionRequest extends FormRequest
             'starts_at' => ['nullable', 'date_format:H:i'],
             'ends_at' => ['nullable', 'date_format:H:i'],
             'catalog_template_ids' => ['nullable', 'array'],
-            'catalog_template_ids.*' => ['integer', 'exists:modifier_group_templates,id'],
+            'catalog_template_ids.*' => ['integer', Rule::exists('modifier_group_templates', 'id')->where('restaurant_id', $this->user()->restaurant_id)],
             'modifier_groups' => ['nullable', 'array'],
             'modifier_groups.*.id' => ['nullable', 'integer'],
             'modifier_groups.*.name' => ['required', 'string', 'max:255'],

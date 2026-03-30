@@ -9,11 +9,11 @@ use App\Http\Controllers\Api\RestaurantController;
 use Illuminate\Support\Facades\Route;
 
 // ─── API Pública — autenticada por access_token del restaurante ───────────────
-Route::middleware('auth.restaurant')->group(function (): void {
+Route::middleware(['auth.restaurant', 'throttle:60,1'])->group(function (): void {
     Route::get('/restaurant', [RestaurantController::class, 'show'])->name('api.restaurant');
     Route::get('/menu', [MenuController::class, 'index'])->name('api.menu');
     Route::get('/branches', [BranchController::class, 'index'])->name('api.branches');
-    Route::post('/delivery/calculate', [DeliveryController::class, 'calculate'])->name('api.delivery.calculate');
-    Route::post('/coupons/validate', [CouponController::class, 'validate'])->name('api.coupons.validate');
+    Route::post('/delivery/calculate', [DeliveryController::class, 'calculate'])->middleware('throttle:10,1')->name('api.delivery.calculate');
+    Route::post('/coupons/validate', [CouponController::class, 'validate'])->middleware('throttle:10,1')->name('api.coupons.validate');
     Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('api.orders.store');
 });

@@ -221,7 +221,7 @@ class ModifierCatalogTest extends TestCase
         ModifierOptionTemplate::factory()->create(['modifier_group_template_id' => $template->id, 'name' => 'Catalog Opt', 'is_active' => true]);
         $product->modifierGroupTemplates()->attach($template->id, ['sort_order' => 0]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer merge-test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertOk();
         $menuData = $response->json('data');
@@ -251,7 +251,7 @@ class ModifierCatalogTest extends TestCase
         ModifierOptionTemplate::factory()->create(['modifier_group_template_id' => $template->id]);
         $product->modifierGroupTemplates()->attach($template->id, ['sort_order' => 0]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer inactive-test']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertOk();
         $productData = $response->json('data.0.products.0');
@@ -337,7 +337,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $option->id, 'price_adjustment' => 10.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer catalog-order-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertCreated();
 
@@ -367,7 +367,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $option->id, 'price_adjustment' => 0.01],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer catalog-order-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
     }
@@ -400,7 +400,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $unlinkedOption->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer catalog-order-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
     }
@@ -435,7 +435,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $catalogOption->id, 'price_adjustment' => 10.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer catalog-order-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertCreated();
 
@@ -468,7 +468,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $inactiveOption->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer catalog-order-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
     }
@@ -516,7 +516,7 @@ class ModifierCatalogTest extends TestCase
                 'unit_price' => 30.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer req-catalog-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
     }
@@ -570,7 +570,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_id' => $option->id, 'price_adjustment' => 15.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer compat-token']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertCreated();
         $this->assertDatabaseHas('order_item_modifiers', [

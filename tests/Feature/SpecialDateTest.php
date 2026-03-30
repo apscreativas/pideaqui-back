@@ -322,7 +322,7 @@ class SpecialDateTest extends TestCase
         ]);
 
         $response = $this->getJson('/api/restaurant', [
-            'Authorization' => 'Bearer holiday-api-test',
+            'Authorization' => 'Bearer '.$restaurant->access_token,
         ]);
 
         $response->assertOk();
@@ -385,7 +385,7 @@ class SpecialDateTest extends TestCase
                 'unit_price' => 50.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer order-holiday-test']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['scheduled_at']);
@@ -441,7 +441,7 @@ class SpecialDateTest extends TestCase
                 'unit_price' => 30.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer order-special-test']);
+        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['scheduled_at']);

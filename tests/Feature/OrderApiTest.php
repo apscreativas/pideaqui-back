@@ -1048,11 +1048,15 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant, 25.00);
         $this->withDeliveryRange($restaurant);
 
-        // Use a time within today's schedule (which covers 00:00-23:59 for today's day_of_week).
-        $scheduledAt = now()->copy()->setTime(14, 0)->startOfMinute();
-        if ($scheduledAt->isPast()) {
-            $scheduledAt = now()->addMinutes(30)->startOfMinute();
-        }
+        // Schedule for tomorrow at noon to avoid timezone/midnight edge cases.
+        $scheduledAt = now()->addDay()->setTime(12, 0)->startOfMinute();
+        RestaurantSchedule::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'day_of_week' => $scheduledAt->dayOfWeek,
+            'opens_at' => '00:00',
+            'closes_at' => '23:59',
+            'is_closed' => false,
+        ]);
 
         $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
             'scheduled_at' => $scheduledAt->toISOString(),

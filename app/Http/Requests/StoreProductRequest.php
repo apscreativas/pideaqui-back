@@ -27,7 +27,7 @@ class StoreProductRequest extends FormRequest
             'is_active' => ['boolean'],
             'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:2048'],
             'catalog_template_ids' => ['nullable', 'array'],
-            'catalog_template_ids.*' => ['integer', 'exists:modifier_group_templates,id'],
+            'catalog_template_ids.*' => ['integer', Rule::exists('modifier_group_templates', 'id')->where('restaurant_id', $this->user()->restaurant_id)],
             'modifier_groups' => ['nullable', 'array'],
             'modifier_groups.*.id' => ['nullable', 'integer'],
             'modifier_groups.*.name' => ['required', 'string', 'max:255'],

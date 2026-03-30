@@ -162,6 +162,7 @@ class BroadcastingTest extends TestCase
         Event::fake([OrderCreated::class]);
 
         $restaurant = Restaurant::factory()->create([
+            'access_token' => 'test-broadcast-token',
             'orders_limit' => 500,
             'allows_delivery' => false,
             'allows_pickup' => true,
@@ -188,8 +189,6 @@ class BroadcastingTest extends TestCase
             'is_closed' => false,
         ]);
 
-        $token = $restaurant->makeVisible('access_token')->access_token;
-
         $response = $this->postJson('/api/orders', [
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -207,7 +206,7 @@ class BroadcastingTest extends TestCase
                 ],
             ],
         ], [
-            'Authorization' => 'Bearer '.$token,
+            'Authorization' => 'Bearer '.$restaurant->access_token,
         ]);
 
         $response->assertStatus(201);

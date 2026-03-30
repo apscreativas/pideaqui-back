@@ -273,7 +273,7 @@ class PromotionTest extends TestCase
             'ends_at' => '18:00',
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
         $response->assertOk();
 
         $data = $response->json('data');
@@ -302,7 +302,7 @@ class PromotionTest extends TestCase
             'ends_at' => '18:00',
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
         $response->assertOk();
 
         $data = $response->json('data');
@@ -318,7 +318,7 @@ class PromotionTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
         $response->assertOk();
     }
 }

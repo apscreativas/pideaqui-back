@@ -123,19 +123,23 @@ function addCommonHolidays() {
         return
     }
 
-    // Create them one by one via sequential posts
-    let chain = Promise.resolve()
-    toCreate.forEach((h) => {
-        chain = chain.then(() => {
-            const dateStr = `${year}-${String(h.month).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`
-            return router.post(route('special-dates.store'), {
-                date: dateStr,
-                type: 'closed',
-                label: h.label,
-                is_recurring: true,
-            }, { preserveState: true, preserveScroll: true })
+    // Create them one by one via sequential posts using onFinish callback
+    function createNext(items, index) {
+        if (index >= items.length) { return }
+        const h = items[index]
+        const dateStr = `${year}-${String(h.month).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`
+        router.post(route('special-dates.store'), {
+            date: dateStr,
+            type: 'closed',
+            label: h.label,
+            is_recurring: true,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            onFinish: () => createNext(items, index + 1),
         })
-    })
+    }
+    createNext(toCreate, 0)
 }
 </script>
 

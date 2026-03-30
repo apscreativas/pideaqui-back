@@ -93,10 +93,10 @@ function clearFilters() {
 
 const hasAdvancedFilters = computed(() => !!(statusFilter.value || minAmount.value || maxAmount.value))
 
-const monthlyPercent = Math.min(
+const monthlyPercent = computed(() => Math.min(
     100,
     props.orders_limit ? Math.round((props.monthly_orders_count / props.orders_limit) * 100) : 0,
-)
+))
 
 const maxBranchCount = props.orders_by_branch.length
     ? Math.max(...props.orders_by_branch.map((b) => b.count))

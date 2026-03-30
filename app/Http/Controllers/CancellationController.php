@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Services\CancellationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,13 +19,13 @@ class CancellationController extends Controller
     {
         $this->authorize('viewAny', Order::class);
 
+        $restaurant = $request->user()->load('restaurant')->restaurant;
+
         $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('restaurant_id', $restaurant->id)],
         ]);
-
-        $restaurant = $request->user()->load('restaurant')->restaurant;
 
         $from = $request->input('from') ? Carbon::parse($request->input('from'))->startOfDay() : today()->startOfDay();
         $to = $request->input('to') ? Carbon::parse($request->input('to'))->endOfDay() : today()->endOfDay();

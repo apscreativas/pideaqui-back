@@ -153,7 +153,7 @@ class CategoryAvailabilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
         $response->assertOk();
 
         $data = $response->json('data');
@@ -185,7 +185,7 @@ class CategoryAvailabilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer test-token']);
+        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
         $response->assertOk();
 
         $categoryIds = collect($response->json('data'))->pluck('id')->filter()->toArray();
