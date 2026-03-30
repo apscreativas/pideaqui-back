@@ -149,7 +149,13 @@ class StatisticsService
             ->selectRaw('COALESCE(SUM((oim.price_adjustment - oim.production_cost) * oi.quantity), 0) as profit')
             ->value('profit');
 
-        return round($baseProfit + $modifierProfit, 2);
+        $totalDiscounts = (float) DB::table('orders as o')
+            ->tap($orderFilter)
+            ->tap($statusFilter)
+            ->selectRaw('COALESCE(SUM(o.discount_amount), 0) as discounts')
+            ->value('discounts');
+
+        return round($baseProfit + $modifierProfit - $totalDiscounts, 2);
     }
 
     /**
