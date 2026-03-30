@@ -142,7 +142,8 @@ const totalProductionCost = computed(() => {
 })
 
 const totalProfit = computed(() => {
-    return props.order.items?.reduce((sum, item) => sum + itemProfit(item), 0) ?? 0
+    const itemsProfit = props.order.items?.reduce((sum, item) => sum + itemProfit(item), 0) ?? 0
+    return itemsProfit - parseFloat(props.order.discount_amount ?? 0)
 })
 
 function advanceStatus() {
