@@ -189,7 +189,22 @@ class OrderEditService
             $subtotal += ((float) $entity->price + $modifierTotal) * (int) $itemData['quantity'];
         }
 
-        $total = $subtotal + (float) $order->delivery_cost;
+        // Re-validate coupon discount if order had one
+        $discountAmount = 0.0;
+        if ($order->coupon_id) {
+            $coupon = \App\Models\Coupon::find($order->coupon_id);
+            if ($coupon && $coupon->min_purchase !== null && $subtotal < (float) $coupon->min_purchase) {
+                // Subtotal no longer meets min_purchase — remove discount
+                $discountAmount = 0.0;
+                $order->discount_amount = 0;
+                $order->coupon_id = null;
+                $order->coupon_code = null;
+            } else {
+                $discountAmount = (float) $order->discount_amount;
+            }
+        }
+
+        $total = $subtotal - $discountAmount + (float) $order->delivery_cost;
 
         if ($total <= 0) {
             throw ValidationException::withMessages(['items' => ['El total del pedido debe ser mayor a cero.']]);
