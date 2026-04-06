@@ -249,6 +249,11 @@ class OrderController extends Controller
                 'cancelled_at' => now(),
             ]);
 
+            // Release coupon use so the customer can reuse the coupon
+            if ($locked->coupon_id) {
+                \App\Models\CouponUse::where('order_id', $locked->id)->delete();
+            }
+
             OrderEvent::create([
                 'order_id' => $locked->id,
                 'user_id' => $request->user()->id,

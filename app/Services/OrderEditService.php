@@ -202,6 +202,10 @@ class OrderEditService
                 $removedCouponCode = $order->coupon_code;
                 $removedDiscountAmount = (float) $order->discount_amount;
                 $discountAmount = 0.0;
+
+                // Release coupon use so the customer can reuse the coupon
+                \App\Models\CouponUse::where('order_id', $order->id)->delete();
+
                 $order->discount_amount = 0;
                 $order->coupon_id = null;
                 $order->coupon_code = null;
