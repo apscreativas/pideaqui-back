@@ -39,6 +39,7 @@ class SubscriptionController extends Controller
                 'on_grace_period' => $restaurant->subscription('default')?->onGracePeriod() ?? false,
                 'pending_plan' => $restaurant->pendingPlan,
                 'pending_plan_effective_at' => $restaurant->pending_plan_effective_at?->toIso8601String(),
+                'current_stripe_price' => $restaurant->subscription('default')?->stripe_price,
             ],
             'plans' => $plans,
             'intent' => null,

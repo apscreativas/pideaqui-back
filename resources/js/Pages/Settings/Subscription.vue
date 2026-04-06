@@ -44,6 +44,18 @@ function isOtherDowngradeBlocked(plan) {
     return pendingPlan.value && isPlanDowngrade(plan) && plan.id !== pendingPlan.value.id
 }
 
+const currentBillingCycle = computed(() => {
+    if (!currentPlan.value || !props.restaurant.current_stripe_price) return null
+    return props.restaurant.current_stripe_price === currentPlan.value.stripe_yearly_price_id ? 'yearly' : 'monthly'
+})
+
+function isSamePlanDifferentCycle(plan) {
+    return currentPlan.value
+        && currentPlan.value.id === plan.id
+        && currentBillingCycle.value
+        && currentBillingCycle.value !== billingCycle.value
+}
+
 const ordersPercent = computed(() => {
     if (!props.restaurant.orders_limit) return 0
     return Math.min(100, Math.round((props.restaurant.orders_count / props.restaurant.orders_limit) * 100))
@@ -389,7 +401,7 @@ function managePayment() {
                                     <span
                                         v-if="currentPlan && currentPlan.id === plan.id"
                                         class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FF5722]/10 text-[#FF5722]"
-                                    >Actual</span>
+                                    >Actual{{ isSamePlanDifferentCycle(plan) ? ` (${currentBillingCycle === 'monthly' ? 'mensual' : 'anual'})` : '' }}</span>
                                 </div>
                             </div>
 
@@ -451,13 +463,23 @@ function managePayment() {
                                 <span v-if="processingAction === 'cancel-pending'" class="material-symbols-outlined text-lg animate-spin">progress_activity</span>
                                 {{ processingAction === 'cancel-pending' ? 'Cancelando...' : 'Cancelar cambio' }}
                             </button>
-                            <!-- Current plan -->
+                            <!-- Current plan: same cycle -->
                             <div
-                                v-else-if="currentPlan && currentPlan.id === plan.id"
+                                v-else-if="currentPlan && currentPlan.id === plan.id && !isSamePlanDifferentCycle(plan)"
                                 class="w-full text-center text-sm font-semibold text-[#FF5722] bg-[#FF5722]/5 rounded-xl px-4 py-2.5"
                             >
                                 Tu plan actual
                             </div>
+                            <!-- Current plan: different cycle (e.g. monthly → yearly) -->
+                            <button
+                                v-else-if="isSamePlanDifferentCycle(plan)"
+                                @click="confirmSwap(plan)"
+                                :disabled="processingPlanId === plan.id"
+                                class="w-full bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                <span v-if="processingPlanId === plan.id" class="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                                {{ processingPlanId === plan.id ? 'Cambiando...' : `Cambiar a ${billingCycle === 'yearly' ? 'anual' : 'mensual'}` }}
+                            </button>
                             <!-- Blocked: another downgrade while pending exists -->
                             <button
                                 v-else-if="isOtherDowngradeBlocked(plan)"
