@@ -64,6 +64,12 @@ class SubscriptionController extends Controller
             return back()->with('error', 'Este plan no tiene un precio configurado en Stripe.');
         }
 
+        // Ensure the restaurant has a Stripe customer before checkout
+        $restaurant->createOrGetStripeCustomer([
+            'name' => $restaurant->name,
+            'email' => $request->user()->email,
+        ]);
+
         $checkout = $restaurant->newSubscription('default', $priceId)
             ->checkout([
                 'success_url' => route('settings.subscription').'?success=1',
