@@ -168,11 +168,36 @@ class RestaurantController extends Controller
 
     public function updateLimits(UpdateRestaurantLimitsRequest $request, Restaurant $restaurant): RedirectResponse
     {
-        $restaurant->update(array_merge($request->validated(), [
-            'plan_id' => null,
-        ]));
+        $wasSub = $restaurant->isSubscriptionMode();
 
-        return back()->with('success', 'Límites manuales actualizados.');
+        // Cancel Stripe subscription if switching from subscription to manual
+        if ($wasSub) {
+            $subscription = $restaurant->subscription('default');
+            if ($subscription && ! $subscription->canceled()) {
+                $subscription->cancelNow();
+            }
+        }
+
+        $restaurant->transitionToManual($request->validated());
+
+        if ($restaurant->status !== 'active' && $restaurant->status !== 'disabled') {
+            $restaurant->transitionTo('active');
+        }
+
+        BillingAudit::log(
+            action: $wasSub ? 'switched_to_manual' : 'limits_updated',
+            restaurantId: $restaurant->id,
+            actorType: 'super_admin',
+            actorId: $request->user('superadmin')->id,
+            payload: $request->validated(),
+            ipAddress: $request->ip(),
+        );
+
+        $message = $wasSub
+            ? 'Restaurante cambiado a modo manual. Suscripción cancelada.'
+            : 'Límites manuales actualizados.';
+
+        return back()->with('success', $message);
     }
 
     public function regenerateToken(Restaurant $restaurant): RedirectResponse
@@ -217,30 +242,36 @@ class RestaurantController extends Controller
         return back()->with('success', 'Restaurante desactivado.');
     }
 
-    public function updatePlan(Request $request, Restaurant $restaurant): RedirectResponse
+    public function startGracePeriod(Request $request, Restaurant $restaurant): RedirectResponse
     {
         $data = $request->validate([
-            'plan_id' => ['required', 'exists:plans,id'],
+            'days' => ['required', 'integer', 'min:1', 'max:90'],
         ]);
 
-        $oldPlan = $restaurant->plan;
-        $newPlan = Plan::query()->findOrFail($data['plan_id']);
+        $gracePlan = Plan::gracePlan();
 
-        $restaurant->assignPlan($newPlan);
+        $restaurant->update([
+            'billing_mode' => 'subscription',
+            'plan_id' => $gracePlan?->id,
+        ]);
+
+        $restaurant->transitionTo('grace_period', [
+            'grace_period_ends_at' => now()->addDays($data['days']),
+        ]);
 
         BillingAudit::log(
-            action: 'plan_changed',
+            action: 'grace_period_started',
             restaurantId: $restaurant->id,
             actorType: 'super_admin',
             actorId: $request->user('superadmin')->id,
             payload: [
-                'old_plan' => $oldPlan?->name,
-                'new_plan' => $newPlan->name,
+                'days' => $data['days'],
+                'previous_mode' => 'manual',
             ],
             ipAddress: $request->ip(),
         );
 
-        return back()->with('success', "Plan cambiado a {$newPlan->name}.");
+        return back()->with('success', "Periodo de gracia iniciado ({$data['days']} días). El restaurante debe elegir su plan.");
     }
 
     public function extendGrace(Request $request, Restaurant $restaurant): RedirectResponse

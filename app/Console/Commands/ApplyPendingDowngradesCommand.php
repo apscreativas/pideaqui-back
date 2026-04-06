@@ -48,7 +48,10 @@ class ApplyPendingDowngradesCommand extends Command
         }
 
         $oldPlan = $restaurant->plan;
-        $priceId = $pendingPlan->stripe_monthly_price_id;
+        $cycle = $restaurant->pending_billing_cycle ?? 'monthly';
+        $priceId = $cycle === 'yearly'
+            ? $pendingPlan->stripe_yearly_price_id
+            : $pendingPlan->stripe_monthly_price_id;
         $subscription = $restaurant->subscription('default');
 
         if ($subscription && $priceId) {

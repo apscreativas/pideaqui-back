@@ -111,6 +111,7 @@ Route::middleware(['auth', 'tenant', 'role:admin'])->group(function (): void {
 
     // Suscripción — ambos roles
     Route::get('/settings/subscription', [SubscriptionController::class, 'index'])->name('settings.subscription');
+    Route::post('/settings/subscription/initiate', [SubscriptionController::class, 'initiateSubscription'])->name('settings.subscription.initiate');
     Route::post('/settings/subscription/checkout', [SubscriptionController::class, 'checkout'])->name('settings.subscription.checkout');
     Route::put('/settings/subscription/swap', [SubscriptionController::class, 'swap'])->name('settings.subscription.swap');
     Route::post('/settings/subscription/cancel', [SubscriptionController::class, 'cancel'])->name('settings.subscription.cancel');
@@ -207,8 +208,8 @@ Route::prefix('super')->name('super.')->group(function (): void {
         Route::get('/billing-settings', [BillingSettingsController::class, 'index'])->name('billing-settings');
         Route::put('/billing-settings', [BillingSettingsController::class, 'update'])->name('billing-settings.update');
 
-        // Cambiar plan de restaurante
-        Route::put('/restaurants/{restaurant}/plan', [SuperAdminRestaurantController::class, 'updatePlan'])->name('restaurants.update-plan');
+        // Billing mode transitions
+        Route::post('/restaurants/{restaurant}/start-grace', [SuperAdminRestaurantController::class, 'startGracePeriod'])->name('restaurants.start-grace');
         Route::post('/restaurants/{restaurant}/extend-grace', [SuperAdminRestaurantController::class, 'extendGrace'])->name('restaurants.extend-grace');
 
         Route::get('/profile', [SuperAdminProfileController::class, 'edit'])->name('profile');

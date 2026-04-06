@@ -220,23 +220,25 @@ class BillingCommandsTest extends TestCase
 
     // ─── SuperAdmin Restaurant Plan Management ──────────────────────────
 
-    public function test_superadmin_can_change_restaurant_plan(): void
+    public function test_superadmin_can_start_grace_period(): void
     {
         $superAdmin = $this->createSuperAdmin();
-        $plan = Plan::factory()->pro()->create();
-        $restaurant = Restaurant::factory()->create();
+        Plan::factory()->grace()->create();
+        $restaurant = Restaurant::factory()->create(['billing_mode' => 'manual']);
 
         $this->actingAs($superAdmin, 'superadmin')
-            ->put(route('super.restaurants.update-plan', $restaurant), [
-                'plan_id' => $plan->id,
+            ->post(route('super.restaurants.start-grace', $restaurant), [
+                'days' => 14,
             ])
             ->assertRedirect();
 
         $restaurant->refresh();
-        $this->assertEquals($plan->id, $restaurant->plan_id);
+        $this->assertEquals('subscription', $restaurant->billing_mode);
+        $this->assertEquals('grace_period', $restaurant->status);
+        $this->assertNotNull($restaurant->grace_period_ends_at);
         $this->assertDatabaseHas('billing_audits', [
             'restaurant_id' => $restaurant->id,
-            'action' => 'plan_changed',
+            'action' => 'grace_period_started',
         ]);
     }
 

@@ -60,6 +60,7 @@ class HandleInertiaRequests extends Middleware
 
         return [
             'status' => $restaurant->status ?? 'active',
+            'billing_mode' => $restaurant->billing_mode ?? 'manual',
             'plan_name' => $restaurant->plan?->name,
             'grace_period_ends_at' => $restaurant->grace_period_ends_at?->toIso8601String(),
             'subscription_ends_at' => $restaurant->subscription_ends_at?->toIso8601String(),

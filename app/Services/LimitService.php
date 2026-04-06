@@ -19,32 +19,38 @@ class LimitService
      */
     public function limitReason(Restaurant $restaurant): ?string
     {
-        // Plan-based: limit is per billing cycle (calendar month)
-        if ($restaurant->plan_id) {
+        if ($restaurant->isSubscriptionMode()) {
             return $this->limitReasonFromPlan($restaurant);
         }
 
-        // Legacy: limit is per configured date range
-        return $this->limitReasonLegacy($restaurant);
+        return $this->limitReasonManual($restaurant);
     }
 
     public function orderCountInPeriod(Restaurant $restaurant): int
     {
-        if ($restaurant->plan_id) {
-            return $this->orderCountForBillingPeriod($restaurant);
+        $period = $this->getCurrentPeriod($restaurant);
+
+        if (! $period) {
+            return 0;
         }
 
-        return $this->orderCountLegacy($restaurant);
+        return Order::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->whereBetween('created_at', [
+                $period['start']->startOfDay(),
+                $period['end']->endOfDay(),
+            ])
+            ->count();
     }
 
     public function getOrdersLimit(Restaurant $restaurant): int
     {
-        return $restaurant->getEffectiveOrdersLimit() ?? 0;
+        return $restaurant->getEffectiveOrdersLimit();
     }
 
     public function getMaxBranches(Restaurant $restaurant): int
     {
-        return $restaurant->getEffectiveMaxBranches() ?? 1;
+        return $restaurant->getEffectiveMaxBranches();
     }
 
     /**
@@ -52,7 +58,7 @@ class LimitService
      */
     public function getCurrentPeriod(Restaurant $restaurant): ?array
     {
-        if ($restaurant->plan_id) {
+        if ($restaurant->isSubscriptionMode()) {
             $subscription = $restaurant->subscription('default');
 
             if ($subscription?->current_period_start && $subscription?->current_period_end) {
@@ -71,6 +77,7 @@ class LimitService
             ];
         }
 
+        // Manual mode: use configured date range
         if ($restaurant->orders_limit_start && $restaurant->orders_limit_end) {
             return [
                 'start' => $restaurant->orders_limit_start,
@@ -89,12 +96,12 @@ class LimitService
             return null;
         }
 
-        $count = $this->orderCountForBillingPeriod($restaurant);
+        $count = $this->orderCountInPeriod($restaurant);
 
         return $count >= $limit ? 'limit_reached' : null;
     }
 
-    private function limitReasonLegacy(Restaurant $restaurant): ?string
+    private function limitReasonManual(Restaurant $restaurant): ?string
     {
         if (! $restaurant->orders_limit_start || ! $restaurant->orders_limit_end) {
             return null;
@@ -108,40 +115,8 @@ class LimitService
             return 'period_expired';
         }
 
-        $count = $this->orderCountLegacy($restaurant);
+        $count = $this->orderCountInPeriod($restaurant);
 
         return $count >= $restaurant->orders_limit ? 'limit_reached' : null;
-    }
-
-    private function orderCountForBillingPeriod(Restaurant $restaurant): int
-    {
-        $period = $this->getCurrentPeriod($restaurant);
-
-        if (! $period) {
-            return 0;
-        }
-
-        return Order::query()
-            ->where('restaurant_id', $restaurant->id)
-            ->whereBetween('created_at', [
-                $period['start']->startOfDay(),
-                $period['end']->endOfDay(),
-            ])
-            ->count();
-    }
-
-    private function orderCountLegacy(Restaurant $restaurant): int
-    {
-        if (! $restaurant->orders_limit_start || ! $restaurant->orders_limit_end) {
-            return 0;
-        }
-
-        return Order::query()
-            ->where('restaurant_id', $restaurant->id)
-            ->whereBetween('created_at', [
-                $restaurant->orders_limit_start->startOfDay(),
-                $restaurant->orders_limit_end->endOfDay(),
-            ])
-            ->count();
     }
 }

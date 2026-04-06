@@ -204,7 +204,7 @@ class BillingTest extends TestCase
     public function test_effective_limits_come_from_plan_when_assigned(): void
     {
         $plan = Plan::factory()->pro()->create();
-        $restaurant = Restaurant::factory()->create(['plan_id' => $plan->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $plan->id]);
 
         $this->assertEquals(1000, $restaurant->getEffectiveOrdersLimit());
         $this->assertEquals(3, $restaurant->getEffectiveMaxBranches());
@@ -227,7 +227,7 @@ class BillingTest extends TestCase
     public function test_limit_service_uses_plan_limits(): void
     {
         $plan = Plan::factory()->create(['orders_limit' => 10, 'max_branches' => 2]);
-        $restaurant = Restaurant::factory()->create(['plan_id' => $plan->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $plan->id]);
 
         $service = app(LimitService::class);
 
@@ -252,7 +252,7 @@ class BillingTest extends TestCase
     public function test_limit_service_plan_based_limit_reached(): void
     {
         $plan = Plan::factory()->create(['orders_limit' => 2]);
-        $restaurant = Restaurant::factory()->create(['plan_id' => $plan->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $plan->id]);
 
         // Create 2 orders this month
         \App\Models\Order::factory()->count(2)->create([
@@ -269,7 +269,7 @@ class BillingTest extends TestCase
     public function test_limit_service_plan_based_limit_not_reached(): void
     {
         $plan = Plan::factory()->create(['orders_limit' => 100]);
-        $restaurant = Restaurant::factory()->create(['plan_id' => $plan->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $plan->id]);
 
         $service = app(LimitService::class);
 
@@ -300,7 +300,7 @@ class BillingTest extends TestCase
     public function test_limit_service_current_period_for_plan(): void
     {
         $plan = Plan::factory()->create();
-        $restaurant = Restaurant::factory()->create(['plan_id' => $plan->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $plan->id]);
 
         $service = app(LimitService::class);
         $period = $service->getCurrentPeriod($restaurant);

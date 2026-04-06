@@ -14,7 +14,7 @@ class DowngradeTest extends TestCase
 
     private function createSubscribedRestaurant(Plan $plan): array
     {
-        $restaurant = Restaurant::factory()->create([
+        $restaurant = Restaurant::factory()->subscription()->create([
             'plan_id' => $plan->id,
             'orders_limit' => $plan->orders_limit,
             'max_branches' => $plan->max_branches,
@@ -123,7 +123,7 @@ class DowngradeTest extends TestCase
         $pro = Plan::factory()->pro()->create();
         $basico = Plan::factory()->basico()->create();
 
-        $restaurant = Restaurant::factory()->create([
+        $restaurant = Restaurant::factory()->subscription()->create([
             'plan_id' => $pro->id,
             'pending_plan_id' => $basico->id,
             'pending_plan_effective_at' => now()->addDays(20),
@@ -145,7 +145,7 @@ class DowngradeTest extends TestCase
         $pro = Plan::factory()->pro()->create();
         $basico = Plan::factory()->basico()->create();
 
-        $restaurant = Restaurant::factory()->create([
+        $restaurant = Restaurant::factory()->subscription()->create([
             'plan_id' => $pro->id,
             'pending_plan_id' => $basico->id,
             'pending_plan_effective_at' => now()->addDays(20),
@@ -163,7 +163,7 @@ class DowngradeTest extends TestCase
     public function test_cancel_without_pending_returns_error(): void
     {
         $pro = Plan::factory()->pro()->create();
-        $restaurant = Restaurant::factory()->create(['plan_id' => $pro->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['plan_id' => $pro->id]);
         $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
 
         $response = $this->actingAs($user)->delete(route('settings.subscription.cancel-pending'));
@@ -225,7 +225,7 @@ class DowngradeTest extends TestCase
     public function test_pending_plan_relationship(): void
     {
         $basico = Plan::factory()->basico()->create();
-        $restaurant = Restaurant::factory()->create(['pending_plan_id' => $basico->id]);
+        $restaurant = Restaurant::factory()->subscription()->create(['pending_plan_id' => $basico->id]);
 
         $this->assertTrue($restaurant->pendingPlan->is($basico));
     }

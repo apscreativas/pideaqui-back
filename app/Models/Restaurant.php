@@ -44,6 +44,8 @@ class Restaurant extends Model
         'text_color',
         'pending_plan_id',
         'pending_plan_effective_at',
+        'billing_mode',
+        'pending_billing_cycle',
     ];
 
     protected $hidden = [
@@ -108,6 +110,36 @@ class Restaurant extends Model
         $this->update([
             'pending_plan_id' => null,
             'pending_plan_effective_at' => null,
+            'pending_billing_cycle' => null,
+        ]);
+    }
+
+    public function isManualMode(): bool
+    {
+        return $this->billing_mode === 'manual';
+    }
+
+    public function isSubscriptionMode(): bool
+    {
+        return $this->billing_mode === 'subscription';
+    }
+
+    public function transitionToManual(array $limits = []): void
+    {
+        $this->update(array_merge([
+            'billing_mode' => 'manual',
+            'plan_id' => null,
+            'pending_plan_id' => null,
+            'pending_plan_effective_at' => null,
+            'pending_billing_cycle' => null,
+            'subscription_ends_at' => null,
+        ], $limits));
+    }
+
+    public function transitionToSubscription(): void
+    {
+        $this->update([
+            'billing_mode' => 'subscription',
         ]);
     }
 
@@ -176,7 +208,7 @@ class Restaurant extends Model
 
     public function getEffectiveOrdersLimit(): int
     {
-        if ($this->plan_id && $this->plan) {
+        if ($this->isSubscriptionMode() && $this->plan) {
             return $this->plan->orders_limit;
         }
 
@@ -185,7 +217,7 @@ class Restaurant extends Model
 
     public function getEffectiveMaxBranches(): int
     {
-        if ($this->plan_id && $this->plan) {
+        if ($this->isSubscriptionMode() && $this->plan) {
             return $this->plan->max_branches;
         }
 

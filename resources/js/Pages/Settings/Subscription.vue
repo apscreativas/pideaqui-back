@@ -17,6 +17,16 @@ const processingPlanId = ref(null)
 const processingAction = ref(null)
 const showSwapModal = ref(false)
 const swapTarget = ref(null)
+const initiating = ref(false)
+
+const isManual = computed(() => props.restaurant.billing_mode === 'manual')
+
+function initiateSubscription() {
+    initiating.value = true
+    router.post(route('settings.subscription.initiate'), {}, {
+        onFinish: () => { initiating.value = false },
+    })
+}
 
 const currentPlan = computed(() => {
     if (!props.restaurant.plan) return null
@@ -181,6 +191,28 @@ function managePayment() {
 
         <SettingsLayout>
             <div class="space-y-6">
+
+                <!-- ─── Manual Mode CTA ─── -->
+                <div v-if="isManual" class="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center">
+                    <div class="w-14 h-14 rounded-2xl bg-[#FF5722]/10 flex items-center justify-center mx-auto mb-4">
+                        <span class="material-symbols-outlined text-[#FF5722] text-3xl" style="font-variation-settings:'FILL' 1">rocket_launch</span>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-900 mb-2">Activa tu suscripción</h2>
+                    <p class="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+                        Actualmente operas con límites manuales. Activa una suscripción para acceder a planes con más pedidos, sucursales y facturación automática.
+                    </p>
+                    <button
+                        @click="initiateSubscription"
+                        :disabled="initiating"
+                        class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-8 py-3 text-sm transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+                    >
+                        <span v-if="initiating" class="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                        {{ initiating ? 'Activando...' : 'Iniciar periodo de prueba gratuito' }}
+                    </button>
+                    <p class="text-xs text-gray-400 mt-3">Tendrás un periodo de gracia para elegir tu plan.</p>
+                </div>
+
+                <template v-if="!isManual">
 
                 <!-- ─── Status Banners ─── -->
 
@@ -507,6 +539,8 @@ function managePayment() {
                         </div>
                     </div>
                 </div>
+
+                </template><!-- end v-if !isManual -->
 
             </div>
         </SettingsLayout>

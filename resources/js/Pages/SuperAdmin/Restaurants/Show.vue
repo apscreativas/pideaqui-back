@@ -17,12 +17,9 @@ const showToken = ref(false)
 const showRegenerateModal = ref(false)
 const regenerating = ref(false)
 const showResetPasswordModal = ref(false)
-const changingPlan = ref(false)
 const editingLimits = ref(false)
-
-const planForm = useForm({
-    plan_id: props.restaurant.plan_id,
-})
+const showGraceModal = ref(false)
+const showSwitchManualModal = ref(false)
 
 const limitsForm = useForm({
     orders_limit: props.restaurant.orders_limit,
@@ -31,7 +28,10 @@ const limitsForm = useForm({
     orders_limit_end: props.restaurant.orders_limit_end?.split('T')[0] ?? '',
 })
 
-const isLegacy = computed(() => !props.restaurant.plan_id)
+const graceForm = useForm({ days: 14 })
+
+const isManual = computed(() => props.restaurant.billing_mode === 'manual')
+const isSubscription = computed(() => props.restaurant.billing_mode === 'subscription')
 
 const ordersPercent = computed(() => {
     if (!props.orders_limit) return 0
@@ -61,28 +61,15 @@ function toggleActive() {
     router.patch(route('super.restaurants.toggle', props.restaurant.id))
 }
 
-function savePlan() {
-    planForm.put(route('super.restaurants.update-plan', props.restaurant.id), {
-        onSuccess: () => { changingPlan.value = false },
-    })
-}
-
 function saveLimits() {
     limitsForm.put(route('super.restaurants.update-limits', props.restaurant.id), {
-        onSuccess: () => { editingLimits.value = false },
+        onSuccess: () => { editingLimits.value = false; showSwitchManualModal.value = false },
     })
 }
 
-function removePlan() {
-    // Clear plan and switch to manual mode
-    planForm.plan_id = null
-    router.put(route('super.restaurants.update-limits', props.restaurant.id), {
-        orders_limit: props.restaurant.orders_limit || 500,
-        max_branches: props.restaurant.max_branches || 1,
-        orders_limit_start: props.restaurant.orders_limit_start?.split('T')[0] || new Date().toISOString().split('T')[0],
-        orders_limit_end: props.restaurant.orders_limit_end?.split('T')[0] || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-    }, {
-        preserveScroll: true,
+function startGrace() {
+    graceForm.post(route('super.restaurants.start-grace', props.restaurant.id), {
+        onSuccess: () => { showGraceModal.value = false },
     })
 }
 
@@ -159,61 +146,45 @@ function regenerateToken() {
                     <div class="flex items-center justify-between mb-5">
                         <div>
                             <h2 class="text-base font-semibold text-gray-900">Plan y uso</h2>
-                            <p v-if="restaurant.plan" class="text-sm text-gray-500 mt-0.5">
-                                Plan actual: <strong class="text-gray-900">{{ restaurant.plan.name }}</strong>
-                            </p>
-                            <p v-else class="text-sm text-amber-600 mt-0.5">
-                                <span class="inline-flex items-center gap-1">
-                                    <span class="material-symbols-outlined text-sm">tune</span>
-                                    Límites manuales
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    :class="isManual ? 'bg-gray-100 text-gray-600' : 'bg-[#FF5722]/10 text-[#FF5722]'"
+                                >
+                                    {{ isManual ? 'Modo manual' : 'Suscripción' }}
                                 </span>
-                            </p>
+                                <span v-if="restaurant.plan" class="text-sm text-gray-500">
+                                    Plan: <strong class="text-gray-900">{{ restaurant.plan.name }}</strong>
+                                </span>
+                            </div>
                         </div>
                         <div class="flex items-center gap-3">
                             <button
-                                v-if="!changingPlan && !editingLimits"
+                                v-if="isManual && !editingLimits"
                                 @click="editingLimits = true"
                                 class="text-sm text-gray-500 hover:underline font-medium"
                             >Editar límites</button>
                             <button
-                                v-if="!changingPlan && !editingLimits"
-                                @click="changingPlan = true"
+                                v-if="isManual && !editingLimits"
+                                @click="showGraceModal = true"
                                 class="text-sm text-[#FF5722] hover:underline font-medium"
-                            >{{ restaurant.plan ? 'Cambiar plan' : 'Asignar plan' }}</button>
+                            >Iniciar suscripción</button>
+                            <button
+                                v-if="isSubscription && !editingLimits"
+                                @click="showSwitchManualModal = true"
+                                class="text-sm text-gray-500 hover:underline font-medium"
+                            >Cambiar a manual</button>
                         </div>
-                    </div>
-
-                    <!-- Plan selector -->
-                    <div v-if="changingPlan" class="mb-5">
-                        <form @submit.prevent="savePlan" class="space-y-3">
-                            <select
-                                v-model.number="planForm.plan_id"
-                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                            >
-                                <option v-for="plan in plans" :key="plan.id" :value="plan.id">
-                                    {{ plan.name }} — {{ plan.orders_limit.toLocaleString('es-MX') }} pedidos, {{ plan.max_branches }} suc.
-                                </option>
-                            </select>
-                            <p v-if="planForm.errors.plan_id" class="text-xs text-red-500">{{ planForm.errors.plan_id }}</p>
-                            <div class="flex gap-3">
-                                <button
-                                    type="submit"
-                                    :disabled="planForm.processing"
-                                    class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60"
-                                >Guardar</button>
-                                <button
-                                    type="button"
-                                    @click="changingPlan = false"
-                                    class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                                >Cancelar</button>
-                            </div>
-                        </form>
                     </div>
 
                     <!-- Manual limits editor -->
                     <div v-if="editingLimits" class="mb-5">
                         <form @submit.prevent="saveLimits" class="space-y-4 bg-gray-50 rounded-xl p-4">
                             <p class="text-sm font-semibold text-gray-700">Límites manuales</p>
+                            <div v-if="isSubscription" class="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-3 py-2 text-xs">
+                                <span class="material-symbols-outlined text-sm mt-0.5">warning</span>
+                                <span>Al guardar, la suscripción de Stripe se cancelará y el restaurante pasará a modo manual.</span>
+                            </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Límite de pedidos</label>
@@ -239,7 +210,9 @@ function regenerateToken() {
                                 </div>
                             </div>
                             <div class="flex gap-3">
-                                <button type="submit" :disabled="limitsForm.processing" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60">Guardar</button>
+                                <button type="submit" :disabled="limitsForm.processing" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60">
+                                    {{ isSubscription ? 'Cambiar a manual' : 'Guardar' }}
+                                </button>
                                 <button type="button" @click="editingLimits = false" class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
                             </div>
                         </form>
@@ -480,5 +453,90 @@ function regenerateToken() {
             </div>
         </Teleport>
 
+        <!-- Grace Period Modal -->
+        <Teleport to="body">
+            <div v-if="showGraceModal" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="fixed inset-0 bg-black/40" @click="showGraceModal = false"></div>
+                <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-[#FF5722]/10 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-[#FF5722]" style="font-variation-settings:'FILL' 1">schedule</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-900">Iniciar periodo de gracia</h3>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">
+                        El restaurante pasará a modo suscripción con un periodo de gracia para elegir su plan. Después de ese periodo deberá tener una suscripción activa.
+                    </p>
+                    <div class="mb-5">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Días de gracia</label>
+                        <input v-model.number="graceForm.days" type="number" min="1" max="90" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                        <p v-if="graceForm.errors.days" class="text-xs text-red-500 mt-1">{{ graceForm.errors.days }}</p>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <button @click="showGraceModal = false" class="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
+                        <button @click="startGrace" :disabled="graceForm.processing" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors disabled:opacity-60">
+                            {{ graceForm.processing ? 'Iniciando...' : 'Iniciar gracia' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Switch to Manual Confirmation Modal -->
+        <Teleport to="body">
+            <div v-if="showSwitchManualModal" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="fixed inset-0 bg-black/40" @click="showSwitchManualModal = false"></div>
+                <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-amber-600">warning</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-900">Cambiar a modo manual</h3>
+                    </div>
+                    <div class="space-y-3 mb-5">
+                        <p class="text-sm text-gray-600">Al cambiar a modo manual:</p>
+                        <ul class="space-y-2 text-sm text-gray-600">
+                            <li class="flex items-start gap-2">
+                                <span class="material-symbols-outlined text-red-400 text-base mt-0.5">close</span>
+                                La <strong>suscripción de Stripe se cancelará</strong> de inmediato.
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="material-symbols-outlined text-blue-400 text-base mt-0.5">tune</span>
+                                Los límites dependerán <strong>exclusivamente de la configuración manual</strong>.
+                            </li>
+                        </ul>
+                    </div>
+                    <p class="text-sm font-medium text-gray-700 mb-2">Configura los nuevos límites:</p>
+                    <form @submit.prevent="saveLimits" class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Límite pedidos</label>
+                                <input v-model.number="limitsForm.orders_limit" type="number" min="1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Máx. sucursales</label>
+                                <input v-model.number="limitsForm.max_branches" type="number" min="1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Inicio periodo</label>
+                                <input v-model="limitsForm.orders_limit_start" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Fin periodo</label>
+                                <input v-model="limitsForm.orders_limit_end" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="showSwitchManualModal = false" class="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" :disabled="limitsForm.processing" class="bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors disabled:opacity-60">
+                                {{ limitsForm.processing ? 'Cancelando suscripción...' : 'Cancelar suscripción y cambiar' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Teleport>
     </SuperAdminLayout>
 </template>

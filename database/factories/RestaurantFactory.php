@@ -29,6 +29,14 @@ class RestaurantFactory extends Factory
             'orders_limit_end' => now()->endOfMonth(),
             'max_branches' => 3,
             'status' => 'active',
+            'billing_mode' => 'manual',
         ];
+    }
+
+    public function subscription(): static
+    {
+        return $this->state(fn () => [
+            'billing_mode' => 'subscription',
+        ]);
     }
 }

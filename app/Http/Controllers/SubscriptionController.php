@@ -26,6 +26,7 @@ class SubscriptionController extends Controller
         return Inertia::render('Settings/Subscription', [
             'restaurant' => [
                 'plan' => $restaurant->plan,
+                'billing_mode' => $restaurant->billing_mode,
                 'status' => $restaurant->status,
                 'grace_period_ends_at' => $restaurant->grace_period_ends_at?->toIso8601String(),
                 'subscription_ends_at' => $restaurant->subscription_ends_at?->toIso8601String(),
@@ -207,6 +208,7 @@ class SubscriptionController extends Controller
         $restaurant->update([
             'pending_plan_id' => $plan->id,
             'pending_plan_effective_at' => $periodEnd,
+            'pending_billing_cycle' => $request->billing_cycle,
         ]);
 
         BillingAudit::log(
@@ -249,6 +251,38 @@ class SubscriptionController extends Controller
         );
 
         return back()->with('success', 'Cambio de plan cancelado. Mantienes tu plan actual.');
+    }
+
+    public function initiateSubscription(Request $request): RedirectResponse
+    {
+        $restaurant = $request->user()->restaurant;
+
+        if ($restaurant->isSubscriptionMode()) {
+            return back()->with('error', 'Ya estás en modo suscripción.');
+        }
+
+        $gracePlan = Plan::gracePlan();
+        $graceDays = \App\Models\BillingSetting::getInt('initial_grace_period_days', 14);
+
+        $restaurant->update([
+            'billing_mode' => 'subscription',
+            'plan_id' => $gracePlan?->id,
+        ]);
+
+        $restaurant->transitionTo('grace_period', [
+            'grace_period_ends_at' => now()->addDays($graceDays),
+        ]);
+
+        BillingAudit::log(
+            action: 'self_initiated_subscription',
+            restaurantId: $restaurant->id,
+            actorType: 'restaurant_admin',
+            actorId: $request->user()->id,
+            payload: ['grace_days' => $graceDays],
+            ipAddress: $request->ip(),
+        );
+
+        return back()->with('success', "Modo suscripción activado. Tienes {$graceDays} días para elegir tu plan.");
     }
 
     public function cancel(Request $request): RedirectResponse
