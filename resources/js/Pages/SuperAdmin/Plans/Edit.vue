@@ -263,12 +263,13 @@ const stripeConnected = props.plan.stripe_product_id && props.plan.stripe_monthl
                                 <span class="text-sm font-semibold text-gray-900">{{ plan.restaurants_count ?? 0 }}</span>
                             </div>
                             <div class="flex items-center justify-between">
-                                <span class="text-sm text-gray-500">Estado</span>
+                                <span class="text-sm text-gray-500">Visibilidad</span>
                                 <span
-                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                                    :class="plan.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                    :class="plan.is_active ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
                                 >
-                                    {{ plan.is_active ? 'Activo' : 'Inactivo' }}
+                                    <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">{{ plan.is_active ? 'visibility' : 'visibility_off' }}</span>
+                                    {{ plan.is_active ? 'En catálogo' : 'Oculto' }}
                                 </span>
                             </div>
                         </div>

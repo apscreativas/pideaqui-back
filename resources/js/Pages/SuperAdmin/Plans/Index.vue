@@ -127,10 +127,12 @@ function tierColor(plan) {
                             </div>
                         </div>
                         <span
-                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                            :class="plan.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'"
+                            v-if="!plan.is_default_grace"
+                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                            :class="plan.is_active ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
                         >
-                            {{ plan.is_active ? 'Activo' : 'Inactivo' }}
+                            <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">{{ plan.is_active ? 'visibility' : 'visibility_off' }}</span>
+                            {{ plan.is_active ? 'En catálogo' : 'Oculto' }}
                         </span>
                     </div>
 
@@ -190,14 +192,15 @@ function tierColor(plan) {
                             <button
                                 v-if="!plan.is_default_grace"
                                 @click="confirmingToggle === plan.id ? toggleActive(plan) : (confirmingToggle = plan.id)"
-                                class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors"
+                                class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors"
                                 :class="confirmingToggle === plan.id
-                                    ? (plan.is_active ? 'border-red-300 bg-red-50 text-red-700' : 'border-green-300 bg-green-50 text-green-700')
-                                    : (plan.is_active ? 'border-gray-200 text-gray-500 hover:border-red-200 hover:text-red-600' : 'border-gray-200 text-gray-500 hover:border-green-200 hover:text-green-600')"
+                                    ? (plan.is_active ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-green-300 bg-green-50 text-green-700')
+                                    : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'"
                             >
+                                <span v-if="confirmingToggle !== plan.id" class="material-symbols-outlined text-sm">{{ plan.is_active ? 'visibility_off' : 'visibility' }}</span>
                                 {{ confirmingToggle === plan.id
-                                    ? (plan.is_active ? 'Confirmar' : 'Confirmar')
-                                    : (plan.is_active ? 'Desactivar' : 'Activar') }}
+                                    ? (plan.is_active ? '¿Ocultar?' : '¿Mostrar?')
+                                    : (plan.is_active ? 'Ocultar' : 'Mostrar') }}
                             </button>
                             <Link
                                 :href="route('super.plans.edit', plan.id)"
