@@ -18,10 +18,20 @@ const showRegenerateModal = ref(false)
 const regenerating = ref(false)
 const showResetPasswordModal = ref(false)
 const changingPlan = ref(false)
+const editingLimits = ref(false)
 
 const planForm = useForm({
     plan_id: props.restaurant.plan_id,
 })
+
+const limitsForm = useForm({
+    orders_limit: props.restaurant.orders_limit,
+    max_branches: props.restaurant.max_branches,
+    orders_limit_start: props.restaurant.orders_limit_start?.split('T')[0] ?? '',
+    orders_limit_end: props.restaurant.orders_limit_end?.split('T')[0] ?? '',
+})
+
+const isLegacy = computed(() => !props.restaurant.plan_id)
 
 const ordersPercent = computed(() => {
     if (!props.orders_limit) return 0
@@ -54,6 +64,25 @@ function toggleActive() {
 function savePlan() {
     planForm.put(route('super.restaurants.update-plan', props.restaurant.id), {
         onSuccess: () => { changingPlan.value = false },
+    })
+}
+
+function saveLimits() {
+    limitsForm.put(route('super.restaurants.update-limits', props.restaurant.id), {
+        onSuccess: () => { editingLimits.value = false },
+    })
+}
+
+function removePlan() {
+    // Clear plan and switch to manual mode
+    planForm.plan_id = null
+    router.put(route('super.restaurants.update-limits', props.restaurant.id), {
+        orders_limit: props.restaurant.orders_limit || 500,
+        max_branches: props.restaurant.max_branches || 1,
+        orders_limit_start: props.restaurant.orders_limit_start?.split('T')[0] || new Date().toISOString().split('T')[0],
+        orders_limit_end: props.restaurant.orders_limit_end?.split('T')[0] || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+    }, {
+        preserveScroll: true,
     })
 }
 
@@ -133,13 +162,25 @@ function regenerateToken() {
                             <p v-if="restaurant.plan" class="text-sm text-gray-500 mt-0.5">
                                 Plan actual: <strong class="text-gray-900">{{ restaurant.plan.name }}</strong>
                             </p>
-                            <p v-else class="text-sm text-amber-600 mt-0.5">Sin plan asignado</p>
+                            <p v-else class="text-sm text-amber-600 mt-0.5">
+                                <span class="inline-flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-sm">tune</span>
+                                    Límites manuales
+                                </span>
+                            </p>
                         </div>
-                        <button
-                            v-if="!changingPlan"
-                            @click="changingPlan = true"
-                            class="text-sm text-[#FF5722] hover:underline font-medium"
-                        >Cambiar plan</button>
+                        <div class="flex items-center gap-3">
+                            <button
+                                v-if="!changingPlan && !editingLimits"
+                                @click="editingLimits = true"
+                                class="text-sm text-gray-500 hover:underline font-medium"
+                            >Editar límites</button>
+                            <button
+                                v-if="!changingPlan && !editingLimits"
+                                @click="changingPlan = true"
+                                class="text-sm text-[#FF5722] hover:underline font-medium"
+                            >{{ restaurant.plan ? 'Cambiar plan' : 'Asignar plan' }}</button>
+                        </div>
                     </div>
 
                     <!-- Plan selector -->
@@ -165,6 +206,41 @@ function regenerateToken() {
                                     @click="changingPlan = false"
                                     class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
                                 >Cancelar</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Manual limits editor -->
+                    <div v-if="editingLimits" class="mb-5">
+                        <form @submit.prevent="saveLimits" class="space-y-4 bg-gray-50 rounded-xl p-4">
+                            <p class="text-sm font-semibold text-gray-700">Límites manuales</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Límite de pedidos</label>
+                                    <input v-model.number="limitsForm.orders_limit" type="number" min="1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <p v-if="limitsForm.errors.orders_limit" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Máx. sucursales</label>
+                                    <input v-model.number="limitsForm.max_branches" type="number" min="1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <p v-if="limitsForm.errors.max_branches" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.max_branches }}</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Inicio del periodo</label>
+                                    <input v-model="limitsForm.orders_limit_start" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Fin del periodo</label>
+                                    <input v-model="limitsForm.orders_limit_end" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button type="submit" :disabled="limitsForm.processing" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60">Guardar</button>
+                                <button type="button" @click="editingLimits = false" class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
                             </div>
                         </form>
                     </div>

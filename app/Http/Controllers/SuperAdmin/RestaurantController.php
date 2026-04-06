@@ -168,9 +168,11 @@ class RestaurantController extends Controller
 
     public function updateLimits(UpdateRestaurantLimitsRequest $request, Restaurant $restaurant): RedirectResponse
     {
-        $restaurant->update($request->validated());
+        $restaurant->update(array_merge($request->validated(), [
+            'plan_id' => null,
+        ]));
 
-        return back()->with('success', 'Límites actualizados.');
+        return back()->with('success', 'Límites manuales actualizados.');
     }
 
     public function regenerateToken(Restaurant $restaurant): RedirectResponse
