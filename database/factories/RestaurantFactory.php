@@ -28,6 +28,7 @@ class RestaurantFactory extends Factory
             'orders_limit_start' => now()->startOfMonth(),
             'orders_limit_end' => now()->endOfMonth(),
             'max_branches' => 3,
+            'status' => 'active',
         ];
     }
 }

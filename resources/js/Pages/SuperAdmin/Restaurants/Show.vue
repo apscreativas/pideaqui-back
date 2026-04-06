@@ -2,35 +2,36 @@
 import { Head, router, useForm } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
-import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     restaurant: Object,
     admin: Object,
     orders_count: Number,
+    orders_limit: Number,
     branch_count: Number,
+    max_branches: Number,
+    plans: Array,
 })
 
-const editingLimits = ref(false)
 const showToken = ref(false)
 const showRegenerateModal = ref(false)
 const regenerating = ref(false)
 const showResetPasswordModal = ref(false)
+const changingPlan = ref(false)
 
-const limitsForm = useForm({
-    orders_limit: props.restaurant.orders_limit,
-    orders_limit_start: props.restaurant.orders_limit_start?.slice(0, 10) ?? '',
-    orders_limit_end: props.restaurant.orders_limit_end?.slice(0, 10) ?? '',
-    max_branches: props.restaurant.max_branches,
+const planForm = useForm({
+    plan_id: props.restaurant.plan_id,
 })
 
-const ordersPercent = computed(() =>
-    Math.min(100, Math.round((props.orders_count / props.restaurant.orders_limit) * 100)),
-)
+const ordersPercent = computed(() => {
+    if (!props.orders_limit) return 0
+    return Math.min(100, Math.round((props.orders_count / props.orders_limit) * 100))
+})
 
-const branchesPercent = computed(() =>
-    Math.min(100, Math.round((props.branch_count / props.restaurant.max_branches) * 100)),
-)
+const branchesPercent = computed(() => {
+    if (!props.max_branches) return 0
+    return Math.min(100, Math.round((props.branch_count / props.max_branches) * 100))
+})
 
 function formatDate(dateStr) {
     if (!dateStr) { return '—' }
@@ -50,9 +51,9 @@ function toggleActive() {
     router.patch(route('super.restaurants.toggle', props.restaurant.id))
 }
 
-function saveLimits() {
-    limitsForm.put(route('super.restaurants.update-limits', props.restaurant.id), {
-        onSuccess: () => { editingLimits.value = false },
+function savePlan() {
+    planForm.put(route('super.restaurants.update-plan', props.restaurant.id), {
+        onSuccess: () => { changingPlan.value = false },
     })
 }
 
@@ -124,18 +125,56 @@ function regenerateToken() {
             <!-- Left column -->
             <div class="col-span-2 space-y-6">
 
-                <!-- Uso del periodo -->
+                <!-- Plan & Uso -->
                 <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                     <div class="flex items-center justify-between mb-5">
-                        <h2 class="text-base font-semibold text-gray-900">Uso del periodo</h2>
-                        <span class="text-xs text-gray-400">{{ formatDate(restaurant.orders_limit_start) }} — {{ formatDate(restaurant.orders_limit_end) }}</span>
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-900">Plan y uso</h2>
+                            <p v-if="restaurant.plan" class="text-sm text-gray-500 mt-0.5">
+                                Plan actual: <strong class="text-gray-900">{{ restaurant.plan.name }}</strong>
+                            </p>
+                            <p v-else class="text-sm text-amber-600 mt-0.5">Sin plan asignado</p>
+                        </div>
+                        <button
+                            v-if="!changingPlan"
+                            @click="changingPlan = true"
+                            class="text-sm text-[#FF5722] hover:underline font-medium"
+                        >Cambiar plan</button>
                     </div>
 
+                    <!-- Plan selector -->
+                    <div v-if="changingPlan" class="mb-5">
+                        <form @submit.prevent="savePlan" class="space-y-3">
+                            <select
+                                v-model.number="planForm.plan_id"
+                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                            >
+                                <option v-for="plan in plans" :key="plan.id" :value="plan.id">
+                                    {{ plan.name }} — {{ plan.orders_limit.toLocaleString('es-MX') }} pedidos, {{ plan.max_branches }} suc.
+                                </option>
+                            </select>
+                            <p v-if="planForm.errors.plan_id" class="text-xs text-red-500">{{ planForm.errors.plan_id }}</p>
+                            <div class="flex gap-3">
+                                <button
+                                    type="submit"
+                                    :disabled="planForm.processing"
+                                    class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60"
+                                >Guardar</button>
+                                <button
+                                    type="button"
+                                    @click="changingPlan = false"
+                                    class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                                >Cancelar</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Usage bars -->
                     <div class="space-y-5">
                         <div>
                             <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-medium text-gray-700">Pedidos del periodo</span>
-                                <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ restaurant.orders_limit }}</span>
+                                <span class="text-sm font-medium text-gray-700">Pedidos del mes</span>
+                                <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ orders_limit }}</span>
                             </div>
                             <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                                 <div
@@ -149,7 +188,7 @@ function regenerateToken() {
                         <div>
                             <div class="flex items-center justify-between mb-2">
                                 <span class="text-sm font-medium text-gray-700">Sucursales</span>
-                                <span class="text-sm font-bold text-gray-900">{{ branch_count }} / {{ restaurant.max_branches }}</span>
+                                <span class="text-sm font-bold text-gray-900">{{ branch_count }} / {{ max_branches }}</span>
                             </div>
                             <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                                 <div
@@ -160,90 +199,6 @@ function regenerateToken() {
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Límites -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                    <div class="flex items-center justify-between mb-5">
-                        <h2 class="text-base font-semibold text-gray-900">Límites del plan</h2>
-                        <button
-                            v-if="!editingLimits"
-                            @click="editingLimits = true"
-                            class="text-sm text-[#FF5722] hover:underline font-medium"
-                        >Editar</button>
-                    </div>
-
-                    <div v-if="!editingLimits" class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <p class="text-xs text-gray-500 mb-1">Límite de pedidos</p>
-                                <p class="text-2xl font-bold text-gray-900">{{ restaurant.orders_limit }}</p>
-                            </div>
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <p class="text-xs text-gray-500 mb-1">Sucursales máx.</p>
-                                <p class="text-2xl font-bold text-gray-900">{{ restaurant.max_branches }}</p>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <p class="text-xs text-gray-500 mb-1">Inicio del periodo</p>
-                                <p class="text-sm font-semibold text-gray-900">{{ formatDate(restaurant.orders_limit_start) }}</p>
-                            </div>
-                            <div class="bg-gray-50 rounded-xl p-4">
-                                <p class="text-xs text-gray-500 mb-1">Fin del periodo</p>
-                                <p class="text-sm font-semibold text-gray-900">{{ formatDate(restaurant.orders_limit_end) }}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <form v-else @submit.prevent="saveLimits" class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Límite de pedidos</label>
-                                <input
-                                    v-model.number="limitsForm.orders_limit"
-                                    type="number"
-                                    min="1"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                                <p v-if="limitsForm.errors.orders_limit" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Sucursales máx.</label>
-                                <input
-                                    v-model.number="limitsForm.max_branches"
-                                    type="number"
-                                    min="1"
-                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                                <p v-if="limitsForm.errors.max_branches" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.max_branches }}</p>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Inicio del periodo</label>
-                                <DatePicker v-model="limitsForm.orders_limit_start" placeholder="Inicio periodo" :has-error="!!limitsForm.errors.orders_limit_start" />
-                                <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Fin del periodo</label>
-                                <DatePicker v-model="limitsForm.orders_limit_end" placeholder="Fin periodo" :has-error="!!limitsForm.errors.orders_limit_end" />
-                                <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-3">
-                            <button
-                                type="submit"
-                                :disabled="limitsForm.processing"
-                                class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60"
-                            >Guardar</button>
-                            <button
-                                type="button"
-                                @click="editingLimits = false"
-                                class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                            >Cancelar</button>
-                        </div>
-                    </form>
                 </div>
             </div>
 
@@ -303,6 +258,37 @@ function regenerateToken() {
                         <span class="material-symbols-outlined text-base">refresh</span>
                         Regenerar token
                     </button>
+                </div>
+
+                <!-- Status & Billing -->
+                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                    <h2 class="text-sm font-semibold text-gray-900 mb-3">Billing</h2>
+                    <div class="space-y-2 text-sm text-gray-600">
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Status</span>
+                            <span
+                                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                                :class="{
+                                    'bg-green-50 text-green-700': restaurant.status === 'active',
+                                    'bg-amber-50 text-amber-700': restaurant.status === 'past_due' || restaurant.status === 'grace_period',
+                                    'bg-red-50 text-red-700': restaurant.status === 'suspended' || restaurant.status === 'disabled',
+                                    'bg-gray-100 text-gray-600': restaurant.status === 'canceled' || restaurant.status === 'incomplete',
+                                }"
+                            >{{ restaurant.status }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Plan</span>
+                            <span class="font-medium text-gray-900">{{ restaurant.plan?.name ?? 'Sin plan' }}</span>
+                        </div>
+                        <div v-if="restaurant.grace_period_ends_at" class="flex justify-between">
+                            <span class="text-gray-500">Gracia vence</span>
+                            <span>{{ formatDate(restaurant.grace_period_ends_at) }}</span>
+                        </div>
+                        <div v-if="restaurant.stripe_id" class="flex justify-between">
+                            <span class="text-gray-500">Stripe</span>
+                            <span class="font-mono text-xs">{{ restaurant.stripe_id }}</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Metadata -->

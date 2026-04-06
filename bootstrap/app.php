@@ -19,6 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 
+        $middleware->validateCsrfTokens(except: [
+            'stripe/webhook',
+        ]);
+
         $middleware->alias([
             'tenant' => \App\Http\Middleware\EnsureTenantContext::class,
             'auth.restaurant' => \App\Http\Middleware\AuthenticateRestaurantToken::class,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBranchRequest;
 use App\Http\Requests\UpdateBranchRequest;
 use App\Models\Branch;
+use App\Services\LimitService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,6 +13,8 @@ use Inertia\Response;
 
 class BranchController extends Controller
 {
+    public function __construct(private readonly LimitService $limitService) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Branch::class);
@@ -20,7 +23,7 @@ class BranchController extends Controller
             ->orderBy('name')
             ->get();
 
-        $maxBranches = $request->user()->restaurant->max_branches;
+        $maxBranches = $this->limitService->getMaxBranches($request->user()->restaurant);
 
         return Inertia::render('Branches/Index', [
             'branches' => $branches,
@@ -43,8 +46,10 @@ class BranchController extends Controller
 
         $restaurant = $request->user()->restaurant;
 
-        if ($restaurant->branches()->count() >= $restaurant->max_branches) {
-            return redirect()->route('branches.index')->with('error', "Has alcanzado el límite de {$restaurant->max_branches} sucursales de tu plan.");
+        $maxBranches = $this->limitService->getMaxBranches($restaurant);
+
+        if ($restaurant->branches()->count() >= $maxBranches) {
+            return redirect()->route('branches.index')->with('error', "Has alcanzado el límite de {$maxBranches} sucursales de tu plan.");
         }
 
         $data = $request->validated();

@@ -14,18 +14,20 @@ class LimitsController extends Controller
 
     public function index(Request $request): Response
     {
-        $restaurant = $request->user()->load('restaurant')->restaurant;
+        $restaurant = $request->user()->load('restaurant.plan')->restaurant;
 
         $ordersCount = $this->limitService->orderCountInPeriod($restaurant);
         $branchCount = Branch::query()->where('restaurant_id', $restaurant->id)->count();
+        $period = $this->limitService->getCurrentPeriod($restaurant);
 
         return Inertia::render('Settings/Limits', [
             'orders_count' => $ordersCount,
-            'orders_limit' => $restaurant->orders_limit,
-            'orders_limit_start' => $restaurant->orders_limit_start?->toDateString(),
-            'orders_limit_end' => $restaurant->orders_limit_end?->toDateString(),
+            'orders_limit' => $this->limitService->getOrdersLimit($restaurant),
+            'orders_limit_start' => $period ? $period['start']->toDateString() : null,
+            'orders_limit_end' => $period ? $period['end']->toDateString() : null,
             'branch_count' => $branchCount,
-            'max_branches' => $restaurant->max_branches,
+            'max_branches' => $this->limitService->getMaxBranches($restaurant),
+            'plan_name' => $restaurant->plan?->name,
         ]);
     }
 }

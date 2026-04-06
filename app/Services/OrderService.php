@@ -100,11 +100,10 @@ class OrderService
         }
 
         // PASO 2 — Find or create customer, always update name/phone.
-        $customer = Customer::firstOrCreate(
+        $customer = Customer::updateOrCreate(
             ['token' => $validated['customer']['token']],
             ['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']],
         );
-        $customer->update(['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']]);
 
         // PASO 3 — Determine branch.
         // Delivery: backend calculates optimal branch (ignore client-supplied branch_id).
@@ -447,6 +446,39 @@ class OrderService
                 throw new \DomainException('monthly_limit_reached');
             }
 
+            // Re-validate branch is still active (TOCTOU guard).
+            $freshBranch = Branch::query()->where('id', $branch->id)->where('is_active', true)->first();
+            if (! $freshBranch) {
+                throw ValidationException::withMessages(['branch_id' => ['La sucursal ya no está disponible.']]);
+            }
+
+            // Re-validate payment method is still active (TOCTOU guard).
+            $paymentStillActive = PaymentMethod::query()
+                ->where('restaurant_id', $restaurant->id)
+                ->where('type', $validated['payment_method'])
+                ->where('is_active', true)
+                ->exists();
+            if (! $paymentStillActive) {
+                throw ValidationException::withMessages(['payment_method' => ['El método de pago ya no está disponible.']]);
+            }
+
+            // Re-validate all products/promotions are still active (TOCTOU guard).
+            foreach ($normalizedItems as $normalized) {
+                $entity = $normalized['entity'];
+                $ownerColumn = $normalized['owner_column'];
+                $ownerId = $normalized['owner_id'];
+
+                if ($ownerColumn === 'product_id') {
+                    $stillActive = Product::query()->where('id', $ownerId)->where('is_active', true)->exists();
+                } else {
+                    $stillActive = Promotion::query()->where('id', $ownerId)->where('is_active', true)->exists();
+                }
+
+                if (! $stillActive) {
+                    throw ValidationException::withMessages(['items' => ["\"{$entity->name}\" ya no está disponible."]]);
+                }
+            }
+
             $order = Order::create([
                 'restaurant_id' => $restaurant->id,
                 'branch_id' => $branch->id,
@@ -513,14 +545,23 @@ class OrderService
                 'to_status' => 'received',
             ]);
 
-            // Record coupon usage (if a coupon was applied).
+            // Record coupon usage with locked re-validation (prevents concurrent double-use).
             if ($coupon) {
-                CouponUse::create([
-                    'coupon_id' => $coupon->id,
-                    'order_id' => $order->id,
-                    'customer_phone' => $validated['customer']['phone'],
-                    'created_at' => now(),
-                ]);
+                $lockedCoupon = Coupon::query()->lockForUpdate()->find($coupon->id);
+
+                if ($lockedCoupon) {
+                    $recheck = $lockedCoupon->isValidForOrder($subtotal, $validated['customer']['phone']);
+                    if (! $recheck['valid']) {
+                        throw ValidationException::withMessages(['coupon_code' => [$recheck['reason']]]);
+                    }
+
+                    CouponUse::create([
+                        'coupon_id' => $lockedCoupon->id,
+                        'order_id' => $order->id,
+                        'customer_phone' => $validated['customer']['phone'],
+                        'created_at' => now(),
+                    ]);
+                }
             }
 
             return $order;

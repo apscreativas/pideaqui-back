@@ -21,7 +21,11 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SpecialDateController;
+use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SuperAdmin\BillingSettingsController;
 use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
+use App\Http\Controllers\SuperAdmin\PlanController as SuperAdminPlanController;
 use App\Http\Controllers\SuperAdmin\ProfileController as SuperAdminProfileController;
 use App\Http\Controllers\SuperAdmin\RestaurantController as SuperAdminRestaurantController;
 use App\Http\Controllers\SuperAdmin\StatisticsController as SuperAdminStatisticsController;
@@ -29,6 +33,9 @@ use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('login'));
+
+// ─── Stripe Webhook ──────────────────────────────────────────────────────────
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handleWebhook'])->name('stripe.webhook');
 
 // ─── Auth (guest) ────────────────────────────────────────────────────────────
 Route::middleware('guest')->group(function (): void {
@@ -101,6 +108,15 @@ Route::middleware(['auth', 'tenant', 'role:admin'])->group(function (): void {
     Route::delete('/settings/special-dates/{specialDate}', [SpecialDateController::class, 'destroy'])->name('special-dates.destroy');
 
     Route::get('/settings/limits', [LimitsController::class, 'index'])->name('settings.limits');
+
+    // Suscripción — ambos roles
+    Route::get('/settings/subscription', [SubscriptionController::class, 'index'])->name('settings.subscription');
+    Route::post('/settings/subscription/checkout', [SubscriptionController::class, 'checkout'])->name('settings.subscription.checkout');
+    Route::put('/settings/subscription/swap', [SubscriptionController::class, 'swap'])->name('settings.subscription.swap');
+    Route::post('/settings/subscription/cancel', [SubscriptionController::class, 'cancel'])->name('settings.subscription.cancel');
+    Route::post('/settings/subscription/resume', [SubscriptionController::class, 'resume'])->name('settings.subscription.resume');
+    Route::delete('/settings/subscription/pending', [SubscriptionController::class, 'cancelPendingDowngrade'])->name('settings.subscription.cancel-pending');
+    Route::get('/settings/subscription/portal', [SubscriptionController::class, 'portal'])->name('settings.subscription.portal');
 
     // Usuarios del restaurante
     Route::get('/settings/users', [UserController::class, 'index'])->name('settings.users');
@@ -177,6 +193,23 @@ Route::prefix('super')->name('super.')->group(function (): void {
         Route::patch('/restaurants/{restaurant}/toggle', [SuperAdminRestaurantController::class, 'toggleActive'])->name('restaurants.toggle');
         Route::post('/restaurants/{restaurant}/regenerate-token', [SuperAdminRestaurantController::class, 'regenerateToken'])->name('restaurants.regenerate-token');
         Route::put('/restaurants/{restaurant}/reset-password', [SuperAdminRestaurantController::class, 'resetAdminPassword'])->name('restaurants.reset-password');
+
+        // Planes
+        Route::get('/plans', [SuperAdminPlanController::class, 'index'])->name('plans.index');
+        Route::get('/plans/create', [SuperAdminPlanController::class, 'create'])->name('plans.create');
+        Route::post('/plans', [SuperAdminPlanController::class, 'store'])->name('plans.store');
+        Route::get('/plans/{plan}/edit', [SuperAdminPlanController::class, 'edit'])->name('plans.edit');
+        Route::put('/plans/{plan}', [SuperAdminPlanController::class, 'update'])->name('plans.update');
+        Route::patch('/plans/{plan}/toggle', [SuperAdminPlanController::class, 'toggle'])->name('plans.toggle');
+        Route::post('/plans/sync-stripe', [SuperAdminPlanController::class, 'syncStripe'])->name('plans.sync-stripe');
+
+        // Billing Settings
+        Route::get('/billing-settings', [BillingSettingsController::class, 'index'])->name('billing-settings');
+        Route::put('/billing-settings', [BillingSettingsController::class, 'update'])->name('billing-settings.update');
+
+        // Cambiar plan de restaurante
+        Route::put('/restaurants/{restaurant}/plan', [SuperAdminRestaurantController::class, 'updatePlan'])->name('restaurants.update-plan');
+        Route::post('/restaurants/{restaurant}/extend-grace', [SuperAdminRestaurantController::class, 'extendGrace'])->name('restaurants.extend-grace');
 
         Route::get('/profile', [SuperAdminProfileController::class, 'edit'])->name('profile');
         Route::put('/profile', [SuperAdminProfileController::class, 'update'])->name('profile.update');

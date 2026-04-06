@@ -5,15 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Cashier\Billable;
 
 class Restaurant extends Model
 {
     /** @use HasFactory<\Database\Factories\RestaurantFactory> */
-    use HasFactory, Notifiable;
+    use Billable, HasFactory, Notifiable;
 
     protected $fillable = [
         'name',
@@ -29,6 +31,10 @@ class Restaurant extends Model
         'orders_limit_end',
         'notify_new_orders',
         'max_branches',
+        'plan_id',
+        'status',
+        'grace_period_ends_at',
+        'subscription_ends_at',
         'instagram',
         'facebook',
         'tiktok',
@@ -36,6 +42,8 @@ class Restaurant extends Model
         'secondary_color',
         'default_product_image',
         'text_color',
+        'pending_plan_id',
+        'pending_plan_effective_at',
     ];
 
     protected $hidden = [
@@ -54,6 +62,9 @@ class Restaurant extends Model
             'orders_limit_end' => 'date',
             'notify_new_orders' => 'boolean',
             'max_branches' => 'integer',
+            'grace_period_ends_at' => 'datetime',
+            'subscription_ends_at' => 'datetime',
+            'pending_plan_effective_at' => 'datetime',
         ];
     }
 
@@ -75,6 +86,110 @@ class Restaurant extends Model
                 ? Storage::disk(config('filesystems.media_disk', 'public'))->url($this->default_product_image)
                 : null,
         );
+    }
+
+    public function plan(): BelongsTo
+    {
+        return $this->belongsTo(Plan::class);
+    }
+
+    public function pendingPlan(): BelongsTo
+    {
+        return $this->belongsTo(Plan::class, 'pending_plan_id');
+    }
+
+    public function hasPendingDowngrade(): bool
+    {
+        return $this->pending_plan_id !== null;
+    }
+
+    public function clearPendingDowngrade(): void
+    {
+        $this->update([
+            'pending_plan_id' => null,
+            'pending_plan_effective_at' => null,
+        ]);
+    }
+
+    public function billingAudits(): HasMany
+    {
+        return $this->hasMany(BillingAudit::class)->latest('created_at');
+    }
+
+    /**
+     * Transition to a new billing status, keeping is_active in sync.
+     *
+     * @param  array<string, mixed>  $extra  Additional fields to update alongside the status change.
+     */
+    public function transitionTo(string $status, array $extra = []): void
+    {
+        // past_due: admin CAN access panel (is_active=true) but canReceiveOrders() blocks API orders
+        $operational = ['active', 'past_due', 'grace_period', 'canceled'];
+
+        $this->update(array_merge($extra, [
+            'status' => $status,
+            'is_active' => in_array($status, $operational, true),
+        ]));
+    }
+
+    public function canReceiveOrders(): bool
+    {
+        if (! $this->is_active) {
+            return false;
+        }
+
+        // past_due is NOT operational — payment failed, must wait for grace_period
+        $operationalStatuses = ['active', 'grace_period'];
+
+        if (in_array($this->status, $operationalStatuses, true)) {
+            return true;
+        }
+
+        if ($this->status === 'canceled' && $this->subscription_ends_at && $this->subscription_ends_at->isFuture()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function canAccessPanel(): bool
+    {
+        return $this->status !== 'disabled';
+    }
+
+    public function mustShowBilling(): bool
+    {
+        return in_array($this->status, ['suspended', 'incomplete'], true);
+    }
+
+    /**
+     * Assign a plan and sync legacy limit fields for backward compatibility.
+     */
+    public function assignPlan(Plan $plan): void
+    {
+        $this->update([
+            'plan_id' => $plan->id,
+            'orders_limit' => $plan->orders_limit,
+            'max_branches' => $plan->max_branches,
+        ]);
+    }
+
+    public function getEffectiveOrdersLimit(): int
+    {
+        if ($this->plan_id && $this->plan) {
+            return $this->plan->orders_limit;
+        }
+
+        return $this->orders_limit ?? 0;
+    }
+
+    public function getEffectiveMaxBranches(): int
+    {
+        if ($this->plan_id && $this->plan) {
+            return $this->plan->max_branches;
+        }
+
+        return $this->max_branches ?? 1;
     }
 
     public function users(): HasMany

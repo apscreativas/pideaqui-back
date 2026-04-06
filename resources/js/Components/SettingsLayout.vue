@@ -11,6 +11,7 @@ const NAV = [
     { label: 'Usuarios',           icon: 'group',             route: 'settings.users' },
     { label: 'Mi cuenta',          icon: 'manage_accounts',   route: 'settings.profile' },
     { label: 'Mis límites',        icon: 'monitor_heart',     route: 'settings.limits' },
+    { label: 'Suscripción',        icon: 'credit_card',       route: 'settings.subscription' },
 ]
 
 function isActive(routeName) {

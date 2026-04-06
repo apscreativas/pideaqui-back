@@ -17,6 +17,24 @@ defineProps({
 const page = usePage()
 const user = computed(() => page.props.auth.user)
 const flash = computed(() => page.props.flash)
+const billing = computed(() => page.props.billing)
+
+const billingGraceDaysLeft = computed(() => {
+    if (!billing.value?.grace_period_ends_at) return 0
+    const now = new Date()
+    const end = new Date(billing.value.grace_period_ends_at)
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24))
+    return Math.max(0, diff)
+})
+
+function formatBillingDate(dateStr) {
+    if (!dateStr) return ''
+    return new Date(dateStr).toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+    })
+}
 
 const isAdmin = computed(() => user.value?.is_admin === true)
 
@@ -132,6 +150,64 @@ function logout() {
                 >
                     <span class="material-symbols-outlined text-red-600 text-xl" style="font-variation-settings:'FILL' 1">error</span>
                     {{ flash.error }}
+                </div>
+            </div>
+
+            <!-- Billing banners -->
+            <div v-if="billing?.status === 'grace_period'" class="px-8 pt-4">
+                <div class="flex items-center gap-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl px-4 py-3 text-sm">
+                    <span class="material-symbols-outlined text-orange-500 text-xl" style="font-variation-settings:'FILL' 1">warning</span>
+                    <span>
+                        Tu periodo de gracia vence en <strong>{{ billingGraceDaysLeft }} dias</strong>.
+                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-orange-900">Elige un plan</Link>
+                        para continuar operando.
+                    </span>
+                </div>
+            </div>
+
+            <div v-else-if="billing?.status === 'past_due'" class="px-8 pt-4">
+                <div class="flex items-center gap-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl px-4 py-3 text-sm">
+                    <span class="material-symbols-outlined text-yellow-500 text-xl" style="font-variation-settings:'FILL' 1">payment</span>
+                    <span>
+                        Hay un problema con tu metodo de pago.
+                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-yellow-900">Actualiza tu pago</Link>
+                        para evitar la suspension de tu cuenta.
+                    </span>
+                </div>
+            </div>
+
+            <div v-else-if="billing?.status === 'suspended'" class="px-8 pt-4">
+                <div class="flex items-center gap-3 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">
+                    <span class="material-symbols-outlined text-red-500 text-xl" style="font-variation-settings:'FILL' 1">block</span>
+                    <span>
+                        Tu cuenta esta suspendida. Tus clientes no pueden realizar pedidos.
+                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-red-900">Elige un plan</Link>
+                        para reactivar tu cuenta.
+                    </span>
+                </div>
+            </div>
+
+            <div v-else-if="billing?.status === 'incomplete'" class="px-8 pt-4">
+                <div class="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm">
+                    <span class="material-symbols-outlined text-blue-500 text-xl" style="font-variation-settings:'FILL' 1">info</span>
+                    <span>
+                        Tu suscripcion esta incompleta.
+                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-blue-900">Completa el proceso</Link>
+                        para activar tu plan.
+                    </span>
+                </div>
+            </div>
+
+            <div v-else-if="billing?.status === 'canceled'" class="px-8 pt-4">
+                <div class="flex items-center gap-3 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl px-4 py-3 text-sm">
+                    <span class="material-symbols-outlined text-gray-400 text-xl" style="font-variation-settings:'FILL' 1">event_busy</span>
+                    <span>
+                        Tu suscripcion ha sido cancelada.
+                        <template v-if="billing.subscription_ends_at">
+                            Tu plan actual expira el {{ formatBillingDate(billing.subscription_ends_at) }}.
+                        </template>
+                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-gray-800">Renovar suscripcion</Link>
+                    </span>
                 </div>
             </div>
 

@@ -191,10 +191,16 @@ class OrderEditService
 
         // Re-validate coupon discount if order had one
         $discountAmount = 0.0;
+        $couponRemoved = false;
+        $removedCouponCode = null;
+        $removedDiscountAmount = 0.0;
         if ($order->coupon_id) {
             $coupon = \App\Models\Coupon::find($order->coupon_id);
             if ($coupon && $coupon->min_purchase !== null && $subtotal < (float) $coupon->min_purchase) {
-                // Subtotal no longer meets min_purchase — remove discount
+                // Subtotal no longer meets min_purchase — remove discount and track for audit
+                $couponRemoved = true;
+                $removedCouponCode = $order->coupon_code;
+                $removedDiscountAmount = (float) $order->discount_amount;
                 $discountAmount = 0.0;
                 $order->discount_amount = 0;
                 $order->coupon_id = null;
@@ -261,6 +267,17 @@ class OrderEditService
         // Update order totals
         $order->subtotal = $subtotal;
         $order->total = $total;
+
+        // Include coupon removal in audit if applicable
+        if ($couponRemoved) {
+            $diff['coupon_removed'] = [
+                'code' => $removedCouponCode,
+                'old_discount' => $removedDiscountAmount,
+                'reason' => 'subtotal_below_minimum',
+                'new_subtotal' => $subtotal,
+                'min_purchase' => (float) ($coupon->min_purchase ?? 0),
+            ];
+        }
 
         return ['action' => 'items_modified', 'changes' => $diff];
     }

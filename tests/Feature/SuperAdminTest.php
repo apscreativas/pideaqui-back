@@ -49,10 +49,14 @@ class SuperAdminTest extends TestCase
         $response->assertStatus(200);
         $response->assertInertia(fn ($page) => $page
             ->component('SuperAdmin/Dashboard')
-            ->has('active_restaurants')
-            ->has('new_restaurants_this_month')
-            ->has('total_monthly_orders')
-            ->has('recent_restaurants')
+            ->has('mrr')
+            ->has('active_subscriptions')
+            ->has('total_restaurants')
+            ->has('new_this_month')
+            ->has('by_status')
+            ->has('by_plan')
+            ->has('alerts')
+            ->has('recent_events')
         );
     }
 
@@ -60,12 +64,12 @@ class SuperAdminTest extends TestCase
     {
         $superAdmin = $this->createSuperAdmin();
 
-        Restaurant::factory()->count(2)->create(['is_active' => true]);
-        Restaurant::factory()->create(['is_active' => false]);
+        Restaurant::factory()->count(2)->create(['is_active' => true, 'status' => 'active']);
+        Restaurant::factory()->create(['is_active' => false, 'status' => 'disabled']);
 
         $response = $this->withoutVite()->actingAs($superAdmin, 'superadmin')->get(route('super.dashboard'));
 
-        $response->assertInertia(fn ($page) => $page->where('active_restaurants', 2));
+        $response->assertInertia(fn ($page) => $page->where('total_restaurants', 3));
     }
 
     // ─── Restaurants Index ──────────────────────────────────────────────────────
@@ -119,10 +123,6 @@ class SuperAdminTest extends TestCase
             'admin_email' => 'carlos@tacosrey.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-            'orders_limit' => 300,
-            'orders_limit_start' => now()->startOfMonth()->toDateString(),
-            'orders_limit_end' => now()->endOfMonth()->toDateString(),
-            'max_branches' => 2,
         ]);
 
         $response->assertRedirect();
@@ -131,9 +131,8 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseHas('restaurants', [
             'name' => 'Tacos El Rey',
             'slug' => 'tacos-el-rey',
-            'orders_limit' => 300,
-            'max_branches' => 2,
             'is_active' => true,
+            'status' => 'grace_period',
         ]);
 
         $this->assertNotNull($restaurant->access_token);

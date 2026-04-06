@@ -21,7 +21,7 @@ class AuthenticateRestaurantToken
             ->where('access_token', $token)
             ->first();
 
-        if (! $restaurant || ! $restaurant->is_active) {
+        if (! $restaurant || ! $restaurant->canReceiveOrders()) {
             return response()->json(['message' => 'Token inválido o restaurante inactivo.'], 401);
         }
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,6 +39,31 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'billing' => fn () => $this->getBillingData($user),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getBillingData(?Authenticatable $user): ?array
+    {
+        if (! $user instanceof User || ! $user->restaurant_id) {
+            return null;
+        }
+
+        $restaurant = $user->restaurant;
+
+        if (! $restaurant) {
+            return null;
+        }
+
+        return [
+            'status' => $restaurant->status ?? 'active',
+            'plan_name' => $restaurant->plan?->name,
+            'grace_period_ends_at' => $restaurant->grace_period_ends_at?->toIso8601String(),
+            'subscription_ends_at' => $restaurant->subscription_ends_at?->toIso8601String(),
+            'must_show_billing' => $restaurant->mustShowBilling(),
         ];
     }
 }

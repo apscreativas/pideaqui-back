@@ -19,6 +19,7 @@ use App\Services\OrderEditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -188,32 +189,41 @@ class OrderController extends Controller
     {
         $this->authorize('update', $order);
 
-        if ($order->status === 'cancelled') {
-            return back()->with('error', 'No se puede avanzar un pedido cancelado.');
+        $result = DB::transaction(function () use ($request, $order): array {
+            $locked = Order::query()->lockForUpdate()->find($order->id);
+
+            if ($locked->status === 'cancelled') {
+                return ['error' => 'No se puede avanzar un pedido cancelado.'];
+            }
+
+            $nextStatus = self::STATUS_TRANSITIONS[$locked->status] ?? null;
+
+            if (! $nextStatus) {
+                return ['error' => 'El pedido ya se encuentra en el estado final.'];
+            }
+
+            $previousStatus = $locked->status;
+            $locked->update(['status' => $nextStatus]);
+
+            OrderEvent::create([
+                'order_id' => $locked->id,
+                'user_id' => $request->user()->id,
+                'action' => 'status_changed',
+                'from_status' => $previousStatus,
+                'to_status' => $nextStatus,
+            ]);
+
+            return ['success' => true, 'order' => $locked, 'previousStatus' => $previousStatus];
+        });
+
+        if (isset($result['error'])) {
+            return back()->with('error', $result['error']);
         }
 
-        $nextStatus = self::STATUS_TRANSITIONS[$order->status] ?? null;
-
-        if (! $nextStatus) {
-            return back()->with('error', 'El pedido ya se encuentra en el estado final.');
-        }
-
-        $previousStatus = $order->status;
-        $order->update(['status' => $nextStatus]);
-
-        // Audit trail
-        OrderEvent::create([
-            'order_id' => $order->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_changed',
-            'from_status' => $previousStatus,
-            'to_status' => $nextStatus,
-        ]);
-
-        $order->load(['customer:id,name,phone', 'branch:id,name']);
+        $result['order']->load(['customer:id,name,phone', 'branch:id,name']);
 
         try {
-            broadcast(new OrderStatusChanged($order, $previousStatus))->toOthers();
+            broadcast(new OrderStatusChanged($result['order'], $result['previousStatus']))->toOthers();
         } catch (\Throwable $e) {
             logger()->warning('Broadcast failed for status change', ['order_id' => $order->id, 'error' => $e->getMessage()]);
         }
@@ -225,27 +235,40 @@ class OrderController extends Controller
     {
         $this->authorize('cancel', $order);
 
-        $previousStatus = $order->status;
-        $order->update([
-            'status' => 'cancelled',
-            'cancellation_reason' => $request->validated('cancellation_reason'),
-            'cancelled_at' => now(),
-        ]);
+        $result = DB::transaction(function () use ($request, $order): array {
+            $locked = Order::query()->lockForUpdate()->find($order->id);
 
-        // Audit trail
-        OrderEvent::create([
-            'order_id' => $order->id,
-            'user_id' => $request->user()->id,
-            'action' => 'cancelled',
-            'from_status' => $previousStatus,
-            'to_status' => 'cancelled',
-            'metadata' => ['reason' => $request->validated('cancellation_reason')],
-        ]);
+            if (! $locked->isCancellable()) {
+                return ['error' => 'Este pedido ya no puede ser cancelado.'];
+            }
 
-        $order->load(['customer:id,name,phone', 'branch:id,name']);
+            $previousStatus = $locked->status;
+            $locked->update([
+                'status' => 'cancelled',
+                'cancellation_reason' => $request->validated('cancellation_reason'),
+                'cancelled_at' => now(),
+            ]);
+
+            OrderEvent::create([
+                'order_id' => $locked->id,
+                'user_id' => $request->user()->id,
+                'action' => 'cancelled',
+                'from_status' => $previousStatus,
+                'to_status' => 'cancelled',
+                'metadata' => ['reason' => $request->validated('cancellation_reason')],
+            ]);
+
+            return ['success' => true, 'order' => $locked, 'previousStatus' => $previousStatus];
+        });
+
+        if (isset($result['error'])) {
+            return back()->with('error', $result['error']);
+        }
+
+        $result['order']->load(['customer:id,name,phone', 'branch:id,name']);
 
         try {
-            broadcast(new OrderCancelled($order, $previousStatus))->toOthers();
+            broadcast(new OrderCancelled($result['order'], $result['previousStatus']))->toOthers();
         } catch (\Throwable $e) {
             logger()->warning('Broadcast failed for cancellation', ['order_id' => $order->id, 'error' => $e->getMessage()]);
         }

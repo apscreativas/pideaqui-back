@@ -20,10 +20,6 @@ class CreateRestaurantRequest extends FormRequest
             'admin_name' => ['required', 'string', 'max:255'],
             'admin_email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'orders_limit' => ['required', 'integer', 'min:1'],
-            'orders_limit_start' => ['required', 'date'],
-            'orders_limit_end' => ['required', 'date', 'after_or_equal:orders_limit_start'],
-            'max_branches' => ['required', 'integer', 'min:1'],
         ];
     }
 
