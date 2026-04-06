@@ -11,6 +11,8 @@ const props = defineProps({
     orders_limit_end: String,
     branch_count: Number,
     max_branches: Number,
+    plan_name: String,
+    billing_mode: String,
 })
 
 const ordersPercent = computed(() =>
@@ -49,9 +51,19 @@ function alertClass(percent) {
 
         <SettingsLayout>
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                <h2 class="text-lg font-bold text-gray-900 mb-2">Mis límites del plan</h2>
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-lg font-bold text-gray-900">Mis límites</h2>
+                    <span
+                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                        :class="billing_mode === 'subscription' ? 'bg-[#FF5722]/10 text-[#FF5722]' : 'bg-gray-100 text-gray-600'"
+                    >
+                        {{ billing_mode === 'subscription' ? (plan_name || 'Suscripción') : 'Límites manuales' }}
+                    </span>
+                </div>
                 <p class="text-sm text-gray-500 mb-8">
-                    Los límites son configurados por el administrador de PideAqui. Contáctanos si necesitas ampliarlos.
+                    {{ billing_mode === 'subscription'
+                        ? 'Los límites están definidos por tu plan de suscripción.'
+                        : 'Los límites son configurados por el administrador de PideAqui. Contáctanos si necesitas ampliarlos.' }}
                 </p>
 
                 <div class="space-y-8">
@@ -78,7 +90,10 @@ function alertClass(percent) {
                             class="mt-3 px-4 py-3 rounded-xl border text-sm font-medium"
                             :class="alertClass(ordersPercent)"
                         >
-                            <span v-if="ordersPercent > 90">Estás muy cerca del límite de pedidos. Contacta a soporte para ampliarlo.</span>
+                            <span v-if="ordersPercent > 90">
+                                Estás muy cerca del límite de pedidos.
+                                {{ billing_mode === 'subscription' ? 'Considera actualizar tu plan.' : 'Contacta a soporte para ampliarlo.' }}
+                            </span>
                             <span v-else>Estás superando el 70% de tu límite de pedidos.</span>
                         </div>
                     </div>
@@ -106,7 +121,10 @@ function alertClass(percent) {
                             class="mt-3 px-4 py-3 rounded-xl border text-sm font-medium"
                             :class="alertClass(branchesPercent)"
                         >
-                            <span v-if="branchesPercent >= 100">Has alcanzado el límite de sucursales. Contacta a soporte para ampliar tu plan.</span>
+                            <span v-if="branchesPercent >= 100">
+                                Has alcanzado el límite de sucursales.
+                                {{ billing_mode === 'subscription' ? 'Considera actualizar tu plan.' : 'Contacta a soporte para ampliarlo.' }}
+                            </span>
                             <span v-else>Estás muy cerca del límite de sucursales.</span>
                         </div>
                     </div>

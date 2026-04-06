@@ -126,6 +126,9 @@ class Restaurant extends Model
 
     public function transitionToManual(array $limits = []): void
     {
+        // Clean up local subscription records to avoid stale data
+        $this->subscriptions()->delete();
+
         $this->update(array_merge([
             'billing_mode' => 'manual',
             'plan_id' => null,
@@ -133,6 +136,7 @@ class Restaurant extends Model
             'pending_plan_effective_at' => null,
             'pending_billing_cycle' => null,
             'subscription_ends_at' => null,
+            'grace_period_ends_at' => null,
         ], $limits));
     }
 

@@ -28,6 +28,7 @@ class LimitsController extends Controller
             'branch_count' => $branchCount,
             'max_branches' => $this->limitService->getMaxBranches($restaurant),
             'plan_name' => $restaurant->plan?->name,
+            'billing_mode' => $restaurant->billing_mode,
         ]);
     }
 }

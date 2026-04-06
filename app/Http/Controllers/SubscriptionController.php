@@ -55,6 +55,11 @@ class SubscriptionController extends Controller
         ]);
 
         $plan = Plan::query()->findOrFail($request->plan_id);
+
+        if ($plan->is_default_grace) {
+            return back()->with('error', 'El plan de gracia no es suscribible.');
+        }
+
         $restaurant = $request->user()->restaurant;
 
         $priceId = $request->billing_cycle === 'yearly'
