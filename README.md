@@ -354,10 +354,119 @@ El tablero Kanban de pedidos se actualiza en tiempo real via Laravel Reverb:
 
 ---
 
+## Billing SaaS (Stripe)
+
+El sistema soporta un **modelo hibrido** de planes:
+
+| Modo | Descripcion | Fuente de limites |
+|------|-------------|-------------------|
+| **Manual** | SuperAdmin define limites directamente | `orders_limit`, `max_branches`, `orders_limit_start/end` en BD |
+| **Suscripcion** | Restaurante elige plan y paga via Stripe | Plan asignado + periodo de Stripe |
+
+### Configurar Stripe
+
+#### 1. Crear cuenta de Stripe
+
+Registrate en [stripe.com](https://stripe.com) y activa tu cuenta.
+
+#### 2. Obtener las API keys
+
+En [Stripe Dashboard > Developers > API keys](https://dashboard.stripe.com/apikeys):
+
+- **Publishable key** (`pk_live_...` o `pk_test_...`) → `STRIPE_KEY`
+- **Secret key** (`sk_live_...` o `sk_test_...`) → `STRIPE_SECRET`
+
+```dotenv
+STRIPE_KEY=pk_live_xxxxxxxxxxxx
+STRIPE_SECRET=sk_live_xxxxxxxxxxxx
+CASHIER_CURRENCY=mxn
+```
+
+> En desarrollo usa las keys de test (`pk_test_...`, `sk_test_...`). En produccion usa las keys live.
+
+#### 3. Sincronizar planes con Stripe
+
+Despues de configurar las keys y tener planes creados en el SuperAdmin:
+
+```bash
+# Crea Products y Prices en Stripe para cada plan local
+php artisan billing:sync-stripe
+```
+
+Esto crea automaticamente los productos y precios en tu cuenta de Stripe y vincula los IDs localmente. Si cambias precios, el comando archiva el precio viejo y crea uno nuevo.
+
+#### 4. Configurar el Webhook
+
+En [Stripe Dashboard > Developers > Webhooks](https://dashboard.stripe.com/webhooks):
+
+1. Click **"Add endpoint"**
+2. **URL**: `https://tu-dominio.com/stripe/webhook`
+3. **Eventos a escuchar** (seleccionar estos 6):
+   - `checkout.session.completed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+   - `invoice.paid`
+   - `invoice.payment_failed`
+4. Click **"Add endpoint"**
+5. En la pagina del endpoint, click **"Reveal"** en el signing secret
+6. Copia el `whsec_...` y ponlo en tu `.env`:
+
+```dotenv
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxx
+```
+
+> **Importante**: En desarrollo local, usa el [Stripe CLI](https://stripe.com/docs/stripe-cli) para reenviar webhooks:
+> ```bash
+> stripe listen --forward-to http://localhost/stripe/webhook
+> ```
+> El CLI te da un `whsec_...` temporal que debes poner en `.env`.
+
+#### 5. Seeders de billing
+
+```bash
+# Crear planes base (Gracia, Basico, Pro, Enterprise)
+php artisan db:seed --class=BillingSeeder --force
+
+# (Opcional) Asignar planes a restaurantes existentes sin plan
+php artisan billing:backfill-plans --dry-run   # Ver que haria
+php artisan billing:backfill-plans             # Ejecutar
+```
+
+### Flujos de billing
+
+| Flujo | Que pasa |
+|-------|----------|
+| **Nuevo restaurante (manual)** | SuperAdmin crea con limites manuales. Sin Stripe. |
+| **Nuevo restaurante (gracia)** | SuperAdmin crea con periodo de gracia (14 dias). Restaurante elige plan y paga via Stripe Checkout. |
+| **Upgrade** | Cambio inmediato. Stripe cobra diferencia prorrateada con `swapAndInvoice()`. |
+| **Downgrade** | Programado para el siguiente ciclo. Restaurante mantiene beneficios actuales hasta fin de periodo. |
+| **Pago fallido** | Stripe reintenta. Restaurante entra en `grace_period` (7 dias). Si no paga, se suspende. |
+| **Cancelacion** | Restaurante sigue activo hasta fin del periodo pagado. Despues se suspende. |
+| **Manual → Suscripcion** | Restaurante o SuperAdmin inicia gracia. Restaurante elige plan. |
+| **Suscripcion → Manual** | SuperAdmin cambia a manual. Stripe se cancela. Limites manuales aplican. |
+
+### Cron jobs de billing
+
+Estos comandos corren automaticamente via el scheduler de Laravel:
+
+| Comando | Frecuencia | Que hace |
+|---------|-----------|----------|
+| `billing:check-grace` | Diario 06:00 | Suspende restaurantes con gracia expirada |
+| `billing:check-canceled` | Diario 06:05 | Suspende suscripciones canceladas cuyo periodo termino |
+| `billing:send-reminders` | Diario 08:00 | Envia recordatorio antes de que expire la gracia |
+| `billing:reconcile` | Diario 03:00 | Sincroniza estado local con Stripe |
+| `billing:apply-pending-downgrades` | Cada hora | Aplica downgrades programados cuya fecha ya paso |
+
+> En Laravel Cloud, habilita el toggle **"Scheduler"** en el compute cluster. En servidor propio, configura el cron: `* * * * * php artisan schedule:run >> /dev/null 2>&1`
+
+---
+
 ## Servicios Externos
 
 | Servicio | Uso | Variable de entorno |
 |----------|-----|---------------------|
+| **Stripe** | Pagos y suscripciones SaaS | `STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET` |
 | **Google Maps JavaScript API** | Mapas interactivos en panel admin | `VITE_GOOGLE_MAPS_KEY` |
 | **Google Distance Matrix API** | Distancia real por calles (backend) | `GOOGLE_MAPS_API_KEY` |
 | **WhatsApp (wa.me)** | Mensaje preestructurado con el pedido | — |
@@ -386,7 +495,7 @@ El tablero Kanban de pedidos se actualiza en tiempo real via Laravel Reverb:
 
 #### 3. Variables de entorno
 
-Cloud inyecta las variables de base de datos y WebSockets automaticamente. Solo necesitas agregar manualmente:
+Cloud inyecta las variables de base de datos, Object Storage y WebSockets automaticamente. Solo necesitas agregar manualmente:
 
 ```dotenv
 APP_NAME=PideAqui
@@ -394,16 +503,18 @@ APP_ENV=production
 APP_DEBUG=false
 APP_TIMEZONE=America/Mexico_City
 
+# Stripe (ver seccion "Billing SaaS" arriba para obtener las keys)
+STRIPE_KEY=pk_live_xxxxxxxxxxxx
+STRIPE_SECRET=sk_live_xxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxx
+CASHIER_CURRENCY=mxn
+
 # Google Maps (dos keys, o la misma si usas una sola)
 VITE_GOOGLE_MAPS_KEY=tu_api_key_frontend
 GOOGLE_MAPS_API_KEY=tu_api_key_backend
 
-# Almacenamiento
+# Almacenamiento (Cloud inyecta AWS_* al adjuntar Object Storage)
 MEDIA_DISK=s3
-AWS_ACCESS_KEY_ID=tu_access_key
-AWS_SECRET_ACCESS_KEY=tu_secret_key
-AWS_DEFAULT_REGION=us-east-1
-AWS_BUCKET=tu-bucket
 
 # Email (notificaciones de nuevos pedidos)
 MAIL_MAILER=smtp
@@ -426,7 +537,54 @@ MAIL_FROM_NAME="PideAqui"
 
 > No necesitas correr `artisan reverb:start`. Cloud gestiona el cluster de WebSockets automaticamente.
 
-#### 5. Desplegar
+#### 5. Build y deploy commands
+
+En el dashboard de Laravel Cloud, configura:
+
+**Build Commands:**
+```
+composer install --no-dev --optimize-autoloader
+npm ci
+npm run build
+php artisan optimize
+```
+
+**Deploy Commands:**
+```
+php artisan migrate --force
+```
+
+#### 6. Post-deploy (primera vez)
+
+Despues del primer deploy, ejecuta estos comandos desde el tab **Commands** del environment:
+
+```bash
+# Crear planes de billing
+php artisan db:seed --class=BillingSeeder --force
+
+# Sincronizar planes con Stripe (crea Products y Prices)
+php artisan billing:sync-stripe
+```
+
+#### 7. Configurar webhook de Stripe
+
+Una vez que tengas el dominio en produccion:
+
+1. Ve a [Stripe Dashboard > Webhooks](https://dashboard.stripe.com/webhooks)
+2. Agrega endpoint: `https://tu-dominio.com/stripe/webhook`
+3. Selecciona los 6 eventos listados en la seccion de Billing arriba
+4. Copia el signing secret → agregalo como `STRIPE_WEBHOOK_SECRET` en las variables del environment
+5. Redeploy
+
+#### 8. Habilitar scheduler y queue
+
+En el dashboard de Laravel Cloud, en tu **App compute cluster**:
+
+1. Habilita el toggle **"Scheduler"** (corre `schedule:run` cada minuto)
+2. Habilita el toggle **"Queue"** (procesa queue:work)
+3. Guarda y redeploy
+
+#### 9. Desplegar
 
 Haz push a tu rama principal. Cloud despliega automaticamente.
 
