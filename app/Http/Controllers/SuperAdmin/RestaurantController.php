@@ -87,6 +87,7 @@ class RestaurantController extends Controller
                     'slug' => $data['slug'],
                     'access_token' => hash('sha256', Str::random(40)),
                     'is_active' => true,
+                    'billing_mode' => 'subscription',
                     'plan_id' => $gracePlan?->id,
                     'status' => 'grace_period',
                     'grace_period_ends_at' => now()->addDays($graceDays),
