@@ -44,7 +44,7 @@ class PlanController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:plans,slug'],
-            'description' => ['nullable', 'string'],
+            'description' => ['required', 'string', 'max:500'],
             'orders_limit' => ['required', 'integer', 'min:1'],
             'max_branches' => ['required', 'integer', 'min:1'],
             'monthly_price' => ['required', 'numeric', 'min:0'],
@@ -72,7 +72,7 @@ class PlanController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:plans,slug,'.$plan->id],
-            'description' => ['nullable', 'string'],
+            'description' => ['required', 'string', 'max:500'],
             'orders_limit' => ['required', 'integer', 'min:1'],
             'max_branches' => ['required', 'integer', 'min:1'],
             'monthly_price' => ['required', 'numeric', 'min:0'],
