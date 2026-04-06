@@ -276,6 +276,7 @@ class BillingCommandsTest extends TestCase
                 'admin_email' => 'admin@test.com',
                 'password' => 'password123',
                 'password_confirmation' => 'password123',
+                'billing_mode' => 'grace',
             ])
             ->assertRedirect();
 

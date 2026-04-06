@@ -123,6 +123,7 @@ class SuperAdminTest extends TestCase
             'admin_email' => 'carlos@tacosrey.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'billing_mode' => 'grace',
         ]);
 
         $response->assertRedirect();

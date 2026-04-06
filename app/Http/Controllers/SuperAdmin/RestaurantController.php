@@ -59,26 +59,46 @@ class RestaurantController extends Controller
     public function store(CreateRestaurantRequest $request): RedirectResponse
     {
         $data = $request->validated();
-        $gracePlan = Plan::gracePlan();
-        $graceDays = BillingSetting::getInt('initial_grace_period_days', 14);
+        $isManual = ($data['billing_mode'] ?? 'grace') === 'manual';
 
-        $restaurant = DB::transaction(function () use ($request, $data, $gracePlan, $graceDays): Restaurant {
-            $restaurant = Restaurant::create([
-                'name' => $data['name'],
-                'slug' => $data['slug'],
-                'access_token' => hash('sha256', Str::random(40)),
-                'is_active' => true,
-                'plan_id' => $gracePlan?->id,
-                'status' => 'grace_period',
-                'grace_period_ends_at' => now()->addDays($graceDays),
-                'orders_limit' => $gracePlan?->orders_limit ?? 500,
-                'orders_limit_start' => now()->startOfMonth(),
-                'orders_limit_end' => now()->endOfMonth(),
-                'max_branches' => $gracePlan?->max_branches ?? 1,
-                'allows_delivery' => false,
-                'allows_pickup' => true,
-                'allows_dine_in' => false,
-            ]);
+        $restaurant = DB::transaction(function () use ($request, $data, $isManual): Restaurant {
+            if ($isManual) {
+                $restaurant = Restaurant::create([
+                    'name' => $data['name'],
+                    'slug' => $data['slug'],
+                    'access_token' => hash('sha256', Str::random(40)),
+                    'is_active' => true,
+                    'plan_id' => null,
+                    'status' => 'active',
+                    'orders_limit' => $data['orders_limit'],
+                    'orders_limit_start' => $data['orders_limit_start'],
+                    'orders_limit_end' => $data['orders_limit_end'],
+                    'max_branches' => $data['max_branches'],
+                    'allows_delivery' => false,
+                    'allows_pickup' => true,
+                    'allows_dine_in' => false,
+                ]);
+            } else {
+                $gracePlan = Plan::gracePlan();
+                $graceDays = BillingSetting::getInt('initial_grace_period_days', 14);
+
+                $restaurant = Restaurant::create([
+                    'name' => $data['name'],
+                    'slug' => $data['slug'],
+                    'access_token' => hash('sha256', Str::random(40)),
+                    'is_active' => true,
+                    'plan_id' => $gracePlan?->id,
+                    'status' => 'grace_period',
+                    'grace_period_ends_at' => now()->addDays($graceDays),
+                    'orders_limit' => $gracePlan?->orders_limit ?? 50,
+                    'orders_limit_start' => now()->startOfMonth(),
+                    'orders_limit_end' => now()->endOfMonth(),
+                    'max_branches' => $gracePlan?->max_branches ?? 1,
+                    'allows_delivery' => false,
+                    'allows_pickup' => true,
+                    'allows_dine_in' => false,
+                ]);
+            }
 
             $user = new User([
                 'name' => $data['admin_name'],
@@ -101,8 +121,8 @@ class RestaurantController extends Controller
                 actorType: 'super_admin',
                 actorId: $request->user('superadmin')->id,
                 payload: [
-                    'plan' => $gracePlan?->name ?? 'none',
-                    'grace_days' => $graceDays,
+                    'billing_mode' => $isManual ? 'manual' : 'grace',
+                    'plan' => $restaurant->plan?->name ?? 'manual',
                 ],
                 ipAddress: $request->ip(),
             );
