@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             SuperAdminSeeder::class,
+            BillingSeeder::class,
         ]);
 
         if (app()->environment('local')) {
