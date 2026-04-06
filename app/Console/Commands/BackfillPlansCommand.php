@@ -59,6 +59,7 @@ class BackfillPlansCommand extends Command
                 $oldMaxBranches = $restaurant->max_branches;
 
                 $restaurant->assignPlan($bestPlan);
+                $restaurant->transitionToSubscription();
                 $restaurant->transitionTo($statusMap);
 
                 BillingAudit::log(

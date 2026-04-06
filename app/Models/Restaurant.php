@@ -208,8 +208,15 @@ class Restaurant extends Model
 
     public function getEffectiveOrdersLimit(): int
     {
-        if ($this->isSubscriptionMode() && $this->plan) {
-            return $this->plan->orders_limit;
+        if ($this->isSubscriptionMode()) {
+            if ($this->plan) {
+                return $this->plan->orders_limit;
+            }
+
+            // Subscription mode without plan — fallback to legacy fields to avoid hard block
+            \Illuminate\Support\Facades\Log::error("Restaurant {$this->id} in subscription mode without plan_id — using legacy orders_limit as fallback");
+
+            return $this->orders_limit ?? 0;
         }
 
         return $this->orders_limit ?? 0;
@@ -217,8 +224,14 @@ class Restaurant extends Model
 
     public function getEffectiveMaxBranches(): int
     {
-        if ($this->isSubscriptionMode() && $this->plan) {
-            return $this->plan->max_branches;
+        if ($this->isSubscriptionMode()) {
+            if ($this->plan) {
+                return $this->plan->max_branches;
+            }
+
+            \Illuminate\Support\Facades\Log::error("Restaurant {$this->id} in subscription mode without plan_id — using legacy max_branches as fallback");
+
+            return $this->max_branches ?? 1;
         }
 
         return $this->max_branches ?? 1;

@@ -26,7 +26,7 @@ class UserController extends Controller
         return Inertia::render('Settings/Users/Index', [
             'users' => $users,
             'operator_count' => $operatorCount,
-            'max_operators' => $restaurant->max_branches,
+            'max_operators' => $restaurant->getEffectiveMaxBranches(),
         ]);
     }
 
@@ -45,9 +45,10 @@ class UserController extends Controller
         $restaurant = $request->user()->restaurant;
 
         // Check operator limit (max_branches = max operators).
+        $maxOperators = $restaurant->getEffectiveMaxBranches();
         $currentOperators = User::where('restaurant_id', $restaurant->id)->where('role', 'operator')->count();
-        if ($currentOperators >= $restaurant->max_branches) {
-            return redirect()->route('settings.users')->with('error', "Has alcanzado el límite de {$restaurant->max_branches} usuarios adicionales.");
+        if ($currentOperators >= $maxOperators) {
+            return redirect()->route('settings.users')->with('error', "Has alcanzado el límite de {$maxOperators} usuarios adicionales.");
         }
 
         $data = $request->validate([

@@ -17,6 +17,7 @@ class ReconcileBillingCommand extends Command
     public function handle(): int
     {
         $restaurants = Restaurant::query()
+            ->where('billing_mode', 'subscription')
             ->whereNotNull('stripe_id')
             ->where('status', '!=', 'disabled')
             ->get();

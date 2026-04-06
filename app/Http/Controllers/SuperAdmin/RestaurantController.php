@@ -276,6 +276,10 @@ class RestaurantController extends Controller
 
     public function extendGrace(Request $request, Restaurant $restaurant): RedirectResponse
     {
+        if ($restaurant->isSubscriptionMode() && $restaurant->subscribed('default')) {
+            return back()->with('error', 'No se puede extender gracia de un restaurante con suscripción activa. Stripe controla el periodo de gracia.');
+        }
+
         $data = $request->validate([
             'days' => ['required', 'integer', 'min:1', 'max:90'],
         ]);

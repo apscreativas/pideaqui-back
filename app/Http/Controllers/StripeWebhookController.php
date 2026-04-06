@@ -210,6 +210,13 @@ class StripeWebhookController extends WebhookController
             return;
         }
 
+        if (! $restaurant->isSubscriptionMode()) {
+            Log::warning("Skipping pending downgrade for manual-mode restaurant {$restaurant->id}");
+            $restaurant->clearPendingDowngrade();
+
+            return;
+        }
+
         $pendingPlan = $restaurant->pendingPlan;
 
         if (! $pendingPlan) {
@@ -227,10 +234,10 @@ class StripeWebhookController extends WebhookController
         $subscription = $restaurant->subscription('default');
 
         if ($subscription && $priceId) {
-            $subscription->swap($priceId);
-
-            // Sync the new billing period
             try {
+                $subscription->swap($priceId);
+
+                // Sync the new billing period
                 $stripeSubscription = $restaurant->stripe()->subscriptions->retrieve(
                     $subscription->stripe_id,
                     ['expand' => ['items']]
@@ -243,7 +250,9 @@ class StripeWebhookController extends WebhookController
                     ]);
                 }
             } catch (\Exception $e) {
-                Log::warning('Failed to sync billing period after downgrade: '.$e->getMessage());
+                Log::error("Failed to apply pending downgrade for restaurant {$restaurant->id}: ".$e->getMessage());
+
+                return; // Do NOT update local plan if Stripe swap failed
             }
         }
 
@@ -257,6 +266,7 @@ class StripeWebhookController extends WebhookController
             payload: [
                 'old_plan' => $oldPlan?->name,
                 'new_plan' => $pendingPlan->name,
+                'billing_cycle' => $cycle,
                 'source' => 'invoice.paid',
             ],
         );

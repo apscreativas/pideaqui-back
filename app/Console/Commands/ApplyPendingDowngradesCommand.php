@@ -39,6 +39,13 @@ class ApplyPendingDowngradesCommand extends Command
 
     private function applyDowngrade(Restaurant $restaurant): void
     {
+        if (! $restaurant->isSubscriptionMode()) {
+            Log::warning("Skipping pending downgrade for manual-mode restaurant {$restaurant->id}");
+            $restaurant->clearPendingDowngrade();
+
+            return;
+        }
+
         $pendingPlan = $restaurant->pendingPlan;
 
         if (! $pendingPlan) {
