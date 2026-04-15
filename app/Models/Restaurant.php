@@ -219,7 +219,7 @@ class Restaurant extends Model
     }
 
     /**
-     * @return null|'disabled'|'suspended'|'incomplete'|'past_due'|'period_expired'|'period_not_started'
+     * @return null|'disabled'|'suspended'|'incomplete'|'past_due'|'subscription_expired'|'period_expired'|'period_not_started'
      */
     public function operationalBlockReason(\App\Services\LimitService $limits): ?string
     {
@@ -236,8 +236,14 @@ class Restaurant extends Model
             return 'past_due';
         }
 
-        // Canceled within subscription_ends_at is considered operational —
-        // canReceiveOrders() and the cron check-canceled handle the expiry.
+        // Canceled with a past subscription_ends_at: block in real-time even if
+        // the `billing:check-canceled` cron hasn't flipped status to 'suspended'
+        // yet. Defense in depth — don't rely solely on the cron for revenue gating.
+        if ($this->status === 'canceled'
+            && $this->subscription_ends_at
+            && $this->subscription_ends_at->isPast()) {
+            return 'subscription_expired';
+        }
 
         // Manual mode period boundaries. LimitService::limitReason() is also
         // used here but we only care about period checks — `limit_reached`

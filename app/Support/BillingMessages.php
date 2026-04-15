@@ -21,6 +21,7 @@ class BillingMessages
             'suspended' => 'Tu plan está suspendido. Renueva para seguir operando.',
             'incomplete' => 'Completa el pago de tu plan para activar el restaurante.',
             'past_due' => 'Tu último cobro falló. Actualiza tu método de pago.',
+            'subscription_expired' => 'Tu suscripción venció el '.optional($restaurant->subscription_ends_at)->format('d/m/Y').'. Reactívala para seguir operando.',
             'period_expired' => 'Tu periodo expiró el '.optional($restaurant->orders_limit_end)->format('d/m/Y').'. Renueva tu plan.',
             'period_not_started' => 'Tu periodo inicia el '.optional($restaurant->orders_limit_start)->format('d/m/Y').'.',
             default => 'Tu restaurante no puede crear pedidos ni ventas en este momento.',

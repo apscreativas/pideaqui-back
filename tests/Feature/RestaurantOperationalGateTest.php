@@ -43,6 +43,30 @@ class RestaurantOperationalGateTest extends TestCase
         $this->assertTrue($r->canOperate($this->limits()));
     }
 
+    public function test_subscription_canceled_with_past_end_is_blocked_even_if_cron_has_not_run(): void
+    {
+        // Defense in depth: if the `billing:check-canceled` cron hasn't run,
+        // a canceled restaurant past its period must still be blocked.
+        $r = Restaurant::factory()->subscription()->create([
+            'status' => 'canceled',
+            'subscription_ends_at' => now()->subDays(1),
+        ]);
+        $this->assertFalse($r->canOperate($this->limits()));
+        $this->assertSame('subscription_expired', $r->operationalBlockReason($this->limits()));
+    }
+
+    public function test_subscription_canceled_without_end_date_does_not_trigger_expired_gate(): void
+    {
+        // Legacy / edge case: if subscription_ends_at is somehow null on a
+        // canceled restaurant, we don't fabricate an expiry — leave it operational
+        // (the canReceiveOrders API gate already requires a future end date).
+        $r = Restaurant::factory()->subscription()->create([
+            'status' => 'canceled',
+            'subscription_ends_at' => null,
+        ]);
+        $this->assertTrue($r->canOperate($this->limits()));
+    }
+
     public function test_subscription_suspended_is_blocked(): void
     {
         $r = Restaurant::factory()->subscription()->create(['status' => 'suspended', 'is_active' => false]);
