@@ -90,8 +90,13 @@ class DashboardController extends Controller
             'max_amount' => $request->input('max_amount', ''),
             'channel' => $request->input('channel', ''),
         ];
-        $data['orders_limit_start'] = $restaurant->orders_limit_start?->toDateString();
-        $data['orders_limit_end'] = $restaurant->orders_limit_end?->toDateString();
+        // Use the effective period from LimitService (resolves subscription →
+        // grace_period → Stripe → manual in that order). The legacy
+        // `orders_limit_start/end` columns on restaurants remain populated
+        // after transitioning to subscription mode and would show stale dates.
+        $period = app(\App\Services\LimitService::class)->getCurrentPeriod($restaurant);
+        $data['orders_limit_start'] = $period ? $period['start']->toDateString() : null;
+        $data['orders_limit_end'] = $period ? $period['end']->toDateString() : null;
 
         return Inertia::render('Dashboard/Index', $data);
     }

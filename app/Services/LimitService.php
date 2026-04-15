@@ -89,6 +89,16 @@ class LimitService
     public function getCurrentPeriod(Restaurant $restaurant): ?array
     {
         if ($restaurant->isSubscriptionMode()) {
+            // Grace period (trial): use the grace window from restaurant row.
+            // No Stripe subscription exists yet — the period is defined by
+            // created_at → grace_period_ends_at.
+            if ($restaurant->status === 'grace_period' && $restaurant->grace_period_ends_at) {
+                return [
+                    'start' => Carbon::parse($restaurant->created_at),
+                    'end' => Carbon::parse($restaurant->grace_period_ends_at),
+                ];
+            }
+
             $subscription = $restaurant->subscription('default');
 
             if ($subscription?->current_period_start && $subscription?->current_period_end) {
