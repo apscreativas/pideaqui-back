@@ -620,6 +620,133 @@ class OrderEditTest extends TestCase
 
     // ─── Show page has audits ───────────────────────────────────────────────────
 
+    // ─── Coupon recalculation on edit ───────────────────────────────────────────
+
+    private function createOrderWithCoupon(int $restaurantId, array $couponOverrides = []): array
+    {
+        $order = $this->createOrderWithItems($restaurantId);
+
+        $coupon = \App\Models\Coupon::factory()->create(array_merge([
+            'restaurant_id' => $restaurantId,
+            'code' => 'TEST20',
+            'discount_type' => 'percentage',
+            'discount_value' => 20.00,
+            'min_purchase' => 50.00,
+            'is_active' => true,
+        ], $couponOverrides));
+
+        // Apply the coupon to the existing order: subtotal $200 × 20% = $40 off
+        $originalDiscount = $coupon->calculateDiscount((float) $order->subtotal);
+        $order->update([
+            'coupon_id' => $coupon->id,
+            'coupon_code' => $coupon->code,
+            'discount_amount' => $originalDiscount,
+            'total' => (float) $order->subtotal - $originalDiscount + (float) $order->delivery_cost,
+        ]);
+
+        \App\Models\CouponUse::create([
+            'coupon_id' => $coupon->id,
+            'order_id' => $order->id,
+            'customer_phone' => $order->customer->phone,
+        ]);
+
+        return [$order->fresh(['items']), $coupon];
+    }
+
+    public function test_percentage_coupon_scales_up_when_items_added(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        [$order, $coupon] = $this->createOrderWithCoupon($restaurant->id);
+
+        // Original: subtotal 200, discount 40 (20%), total 210 ($200 − $40 + $50 delivery)
+        $this->assertEquals(40.00, (float) $order->discount_amount);
+
+        $item = $order->items->first();
+
+        // Edit: increase quantity from 2 to 5 → new subtotal $500
+        $this->actingAs($user)->put(route('orders.update', $order), [
+            'expected_updated_at' => $order->updated_at->toISOString(),
+            'items' => [['product_id' => $item->product_id, 'quantity' => 5]],
+        ])->assertRedirect();
+
+        $order->refresh();
+        // New: subtotal $500 × 20% = $100 off → total $500 − $100 + $50 = $450
+        $this->assertEquals(500.00, (float) $order->subtotal);
+        $this->assertEquals(100.00, (float) $order->discount_amount);
+        $this->assertEquals(450.00, (float) $order->total);
+        $this->assertEquals($coupon->id, $order->coupon_id);
+    }
+
+    public function test_percentage_coupon_scales_down_when_items_removed(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        [$order] = $this->createOrderWithCoupon($restaurant->id);
+
+        $item = $order->items->first();
+
+        // Edit: reduce quantity from 2 to 1 → new subtotal $100 (still above min_purchase 50)
+        $this->actingAs($user)->put(route('orders.update', $order), [
+            'expected_updated_at' => $order->updated_at->toISOString(),
+            'items' => [['product_id' => $item->product_id, 'quantity' => 1]],
+        ])->assertRedirect();
+
+        $order->refresh();
+        // New: subtotal $100 × 20% = $20 off → total $100 − $20 + $50 = $130
+        $this->assertEquals(100.00, (float) $order->subtotal);
+        $this->assertEquals(20.00, (float) $order->discount_amount);
+        $this->assertEquals(130.00, (float) $order->total);
+    }
+
+    public function test_fixed_coupon_stays_constant_when_items_change(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        [$order] = $this->createOrderWithCoupon($restaurant->id, [
+            'code' => 'FIXED30',
+            'discount_type' => 'fixed',
+            'discount_value' => 30.00,
+        ]);
+
+        // Original: subtotal 200, fixed $30 off → total $220
+        $this->assertEquals(30.00, (float) $order->discount_amount);
+
+        $item = $order->items->first();
+
+        // Edit: increase quantity to 5 → subtotal $500, discount still $30
+        $this->actingAs($user)->put(route('orders.update', $order), [
+            'expected_updated_at' => $order->updated_at->toISOString(),
+            'items' => [['product_id' => $item->product_id, 'quantity' => 5]],
+        ])->assertRedirect();
+
+        $order->refresh();
+        $this->assertEquals(500.00, (float) $order->subtotal);
+        $this->assertEquals(30.00, (float) $order->discount_amount);
+        $this->assertEquals(520.00, (float) $order->total);
+    }
+
+    public function test_coupon_removed_when_subtotal_falls_below_min_purchase(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        [$order, $coupon] = $this->createOrderWithCoupon($restaurant->id, [
+            'min_purchase' => 150.00, // original subtotal 200 meets it
+        ]);
+        $this->assertEquals(40.00, (float) $order->discount_amount);
+
+        $item = $order->items->first();
+
+        // Edit: reduce to qty 1 → subtotal $100 (below min_purchase $150)
+        $this->actingAs($user)->put(route('orders.update', $order), [
+            'expected_updated_at' => $order->updated_at->toISOString(),
+            'items' => [['product_id' => $item->product_id, 'quantity' => 1]],
+        ])->assertRedirect();
+
+        $order->refresh();
+        $this->assertEquals(100.00, (float) $order->subtotal);
+        $this->assertEquals(0.00, (float) $order->discount_amount);
+        $this->assertEquals(150.00, (float) $order->total); // 100 + 50 delivery
+        $this->assertNull($order->coupon_id);
+        $this->assertDatabaseMissing('coupon_uses', ['order_id' => $order->id]);
+    }
+
     public function test_show_page_includes_audits(): void
     {
         [$user, $restaurant] = $this->createAdminWithRestaurant();

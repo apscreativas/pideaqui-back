@@ -209,7 +209,13 @@ class OrderEditService
                 $order->discount_amount = 0;
                 $order->coupon_id = null;
                 $order->coupon_code = null;
+            } elseif ($coupon) {
+                // Recalculate on the NEW subtotal so percentage coupons scale
+                // with edits (fixed coupons return the same amount).
+                $discountAmount = $coupon->calculateDiscount($subtotal);
+                $order->discount_amount = $discountAmount;
             } else {
+                // Coupon row was deleted from DB — keep the original snapshot.
                 $discountAmount = (float) $order->discount_amount;
             }
         }
