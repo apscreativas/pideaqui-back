@@ -35,7 +35,7 @@ class RestaurantResource extends JsonResource
             'branches' => BranchResource::collection($this->whenLoaded('branches')),
             'schedules' => RestaurantScheduleResource::collection($this->whenLoaded('schedules')),
             'is_open' => $this->isCurrentlyOpen(),
-            'today_schedule' => $this->resource->getResolvedScheduleForDate(Carbon::now()),
+            'today_schedule' => $this->resource->getResolvedScheduleForDate(Carbon::now(config('app.timezone'))),
             'closure_reason' => $this->resolveClosureReason(),
             'closure_label' => $this->resolveClosureLabel(),
             'upcoming_closures' => $this->resolveUpcomingClosures(),
@@ -56,7 +56,7 @@ class RestaurantResource extends JsonResource
             return null;
         }
 
-        $today = $this->resource->getResolvedScheduleForDate(Carbon::now());
+        $today = $this->resource->getResolvedScheduleForDate(Carbon::now(config('app.timezone')));
 
         return match ($today['source']) {
             'closed' => 'holiday',
@@ -71,7 +71,7 @@ class RestaurantResource extends JsonResource
             return null;
         }
 
-        $today = $this->resource->getResolvedScheduleForDate(Carbon::now());
+        $today = $this->resource->getResolvedScheduleForDate(Carbon::now(config('app.timezone')));
 
         return $today['label'];
     }

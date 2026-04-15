@@ -467,7 +467,7 @@ class Restaurant extends Model
 
     public function isCurrentlyOpen(): bool
     {
-        $now = Carbon::now();
+        $now = Carbon::now(config('app.timezone'));
         $currentTime = $now->format('H:i:s');
 
         // Resolve today's effective schedule (special date > regular).

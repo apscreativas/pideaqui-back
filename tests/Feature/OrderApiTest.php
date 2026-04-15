@@ -727,6 +727,42 @@ class OrderApiTest extends TestCase
         )->assertCreated();
     }
 
+    public function test_scheduled_at_with_utc_suffix_is_interpreted_in_app_tz(): void
+    {
+        config(['app.timezone' => 'America/Mexico_City']);
+
+        $restaurant = $this->restaurant();
+        $branch = $this->branch($restaurant);
+        $product = $this->product($restaurant, 25.00);
+        $this->withDeliveryRange($restaurant);
+
+        // Target: tomorrow 20:00 local Mexico City (inside a 10:00-22:00 window).
+        // Serialize as UTC "Z" — how JS's Date.toISOString() emits dates.
+        $tomorrowLocal = now(config('app.timezone'))->addDay()->setTime(20, 0);
+        $utcString = $tomorrowLocal->copy()->utc()->toIso8601ZuluString();
+
+        RestaurantSchedule::updateOrCreate(
+            ['restaurant_id' => $restaurant->id, 'day_of_week' => $tomorrowLocal->dayOfWeek],
+            ['opens_at' => '10:00', 'closes_at' => '22:00', 'is_closed' => false],
+        );
+
+        // Close the OTHER day (in case UTC shift crosses midnight and hits next weekday).
+        $otherDay = $tomorrowLocal->copy()->utc()->dayOfWeek;
+        if ($otherDay !== $tomorrowLocal->dayOfWeek) {
+            RestaurantSchedule::updateOrCreate(
+                ['restaurant_id' => $restaurant->id, 'day_of_week' => $otherDay],
+                ['opens_at' => null, 'closes_at' => null, 'is_closed' => true],
+            );
+        }
+
+        $this->postJson('/api/orders',
+            $this->deliveryPayload($branch, $product, [
+                'scheduled_at' => $utcString,
+            ]),
+            $this->authHeaders($restaurant),
+        )->assertCreated();
+    }
+
     public function test_distance_km_is_computed_server_side(): void
     {
         $restaurant = $this->restaurant();

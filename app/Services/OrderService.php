@@ -56,7 +56,7 @@ class OrderService
         // Uses getResolvedScheduleForDate() which checks special dates > regular schedule.
         $restaurant->load('schedules');
         $scheduledAt = isset($validated['scheduled_at'])
-            ? Carbon::parse($validated['scheduled_at'], config('app.timezone'))
+            ? Carbon::parse($validated['scheduled_at'])->setTimezone(config('app.timezone'))
             : null;
 
         if ($scheduledAt) {

@@ -126,7 +126,7 @@ class Promotion extends Model
             return false;
         }
 
-        $now = Carbon::now();
+        $now = Carbon::now(config('app.timezone'));
 
         if (! in_array($now->dayOfWeek, $this->active_days ?? [])) {
             return false;

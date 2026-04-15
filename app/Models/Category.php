@@ -69,7 +69,7 @@ class Category extends Model
             return true;
         }
 
-        $now = Carbon::now();
+        $now = Carbon::now(config('app.timezone'));
 
         if (! in_array($now->dayOfWeek, $this->available_days)) {
             return false;
