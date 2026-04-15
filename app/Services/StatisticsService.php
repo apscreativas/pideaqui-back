@@ -40,6 +40,7 @@ class StatisticsService
         $posRevenue = $includePos ? $this->posRevenue($restaurantId, $from, $to, $branchIds) : 0.0;
         $ordersProfit = $includeOrders ? $this->netProfit($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : 0.0;
         $posProfit = $includePos ? $this->posNetProfit($restaurantId, $from, $to, $branchIds) : 0.0;
+        $deliveryRevenue = $includeOrders ? $this->deliveryRevenue($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : 0.0;
 
         $byPayment = $includeOrders ? $this->revenueByPayment($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : ['cash' => 0.0, 'terminal' => 0.0, 'transfer' => 0.0];
         $posByPayment = $includePos ? $this->posRevenueByPayment($restaurantId, $from, $to, $branchIds) : ['cash' => 0.0, 'terminal' => 0.0, 'transfer' => 0.0];
@@ -77,6 +78,12 @@ class StatisticsService
             'net_profit' => $grossProfit,
             'expenses_total' => round($expensesTotal, 2),
             'real_profit' => $realProfit,
+
+            // ── Delivery revenue (informativo, NO ganancia del restaurante) ──
+            // Monto cobrado al cliente por envíos. No se suma al net_profit
+            // porque es pass-through (lo cobra el restaurante pero típicamente
+            // lo paga al repartidor). Solo para visibilidad en el dashboard.
+            'delivery_revenue' => round($deliveryRevenue, 2),
 
             // ── Unified payment-method breakdown ─────────────────────────────
             'revenue_by_payment' => [
@@ -287,6 +294,21 @@ class StatisticsService
         }
 
         return (float) $query->sum('total');
+    }
+
+    /**
+     * Total `delivery_cost` cobrado al cliente en orders delivered del periodo.
+     * Informativo: no es ganancia del restaurante (pass-through al repartidor).
+     */
+    private function deliveryRevenue(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds, ?array $statuses, ?float $minAmount, ?float $maxAmount): float
+    {
+        $query = $this->applyFilters(Order::query(), $restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount);
+
+        if ($statuses === null) {
+            $query->where('status', 'delivered');
+        }
+
+        return (float) $query->sum('delivery_cost');
     }
 
     /**

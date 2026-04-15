@@ -19,6 +19,7 @@ const props = defineProps({
     real_profit: { type: Number, default: 0 },
     revenue: { type: Number, default: 0 },
     revenue_breakdown: { type: Object, default: () => ({ orders: 0, pos: 0 }) },
+    delivery_revenue: { type: Number, default: 0 },
     revenue_by_payment: { type: Object, default: () => ({ cash: 0, terminal: 0, transfer: 0 }) },
     orders_by_branch: Array,
     recent_orders: Array,
@@ -376,6 +377,9 @@ const activePreset = computed(() => {
                 <p class="text-[11px] text-gray-400 mt-0.5 truncate">
                     Online {{ formatPrice(revenue_breakdown.orders) }} · POS {{ formatPrice(revenue_breakdown.pos) }}
                 </p>
+                <p v-if="delivery_revenue > 0" class="text-[11px] text-sky-600 mt-0.5 truncate" title="Cobrado al cliente por envíos. No es ganancia del restaurante.">
+                    Incluye envíos: {{ formatPrice(delivery_revenue) }}
+                </p>
             </div>
 
             <!-- Utilidad real — admin only (después de gastos) -->
@@ -420,10 +424,15 @@ const activePreset = computed(() => {
                     Ver gastos <span class="material-symbols-outlined text-sm">arrow_forward</span>
                 </Link>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div class="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                     <p class="text-xs font-medium text-gray-500">Ingresos totales</p>
                     <p class="text-xl font-bold text-gray-900 mt-1">{{ formatPrice(revenue) }}</p>
+                </div>
+                <div class="p-4 rounded-xl border border-sky-100 bg-sky-50/50">
+                    <p class="text-xs font-medium text-sky-700">Envíos cobrados</p>
+                    <p class="text-xl font-bold text-sky-900 mt-1">{{ formatPrice(delivery_revenue) }}</p>
+                    <p class="text-[11px] text-sky-600 mt-0.5">no es ganancia del restaurante</p>
                 </div>
                 <div class="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
                     <p class="text-xs font-medium text-gray-500">Utilidad bruta</p>
@@ -561,12 +570,16 @@ const activePreset = computed(() => {
         <!-- Últimos pedidos -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-900">Ultimos pedidos</h3>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Últimos pedidos</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Mostrando los 20 más recientes</p>
+                </div>
                 <Link
                     :href="route('orders.index')"
-                    class="text-sm text-[#FF5722] hover:text-[#D84315] font-medium"
+                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold text-[#FF5722] bg-orange-50 hover:bg-orange-100 transition-colors"
                 >
                     Ver todos
+                    <span class="material-symbols-outlined text-base">arrow_forward</span>
                 </Link>
             </div>
             <div class="overflow-x-auto">
