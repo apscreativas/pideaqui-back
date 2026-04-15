@@ -10,6 +10,27 @@ const props = defineProps({
     filters: Object,
     monthly_count: Number,
     orders_limit: Number,
+    limit_reason: { type: String, default: null },
+    limit_period: { type: Object, default: () => ({ start: null, end: null }) },
+})
+
+function formatPeriodDate(s) {
+    if (!s) { return '' }
+    return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(s + 'T12:00:00'))
+}
+
+const pageInstance = usePage()
+const billing = computed(() => pageInstance.props.billing)
+const canOperate = computed(() => billing.value?.can_operate !== false)
+const blockMessage = computed(() => billing.value?.block_message ?? '')
+const createDisabled = computed(() => props.limit_reason !== null || !canOperate.value)
+
+const newOrderTitle = computed(() => {
+    if (!canOperate.value) { return blockMessage.value }
+    if (props.limit_reason === 'limit_reached') { return `Has alcanzado el límite del periodo (${props.monthly_count}/${props.orders_limit})` }
+    if (props.limit_reason === 'period_expired') { return `El periodo terminó el ${formatPeriodDate(props.limit_period?.end)}` }
+    if (props.limit_reason === 'period_not_started') { return `El periodo inicia el ${formatPeriodDate(props.limit_period?.start)}` }
+    return 'Crear pedido manual'
 })
 
 // --- Optimistic UI: local copy of orders ---
@@ -306,6 +327,18 @@ onUnmounted(() => {
     <AppLayout title="Pedidos">
       <div class="flex flex-col h-[calc(100vh-4rem)]">
 
+        <!-- Operational gate banner -->
+        <div v-if="!canOperate" class="mb-4 p-4 rounded-xl border border-red-200 bg-red-50 flex items-start gap-3 shrink-0">
+            <span class="material-symbols-outlined text-red-600">block</span>
+            <div class="flex-1">
+                <p class="text-sm font-semibold text-red-900">{{ blockMessage }}</p>
+                <p class="text-xs text-red-700 mt-1">Los pedidos en curso se pueden gestionar normalmente. No se aceptarán pedidos nuevos.</p>
+            </div>
+            <a :href="route('settings.subscription')" class="text-sm font-bold text-red-700 hover:underline whitespace-nowrap">
+                Ir a mi plan
+            </a>
+        </div>
+
         <!-- Header -->
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 shrink-0">
             <div>
@@ -313,18 +346,32 @@ onUnmounted(() => {
                 <p class="mt-1 text-sm text-gray-500">Gestiona tus pedidos arrastrando las tarjetas entre columnas.</p>
             </div>
 
-            <!-- Monthly usage -->
-            <div class="flex items-center gap-4 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 min-w-[280px]">
-                <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold text-gray-700">Pedidos del periodo</span>
-                        <span class="text-sm text-[#FF5722] font-bold">{{ monthly_count }}/{{ orders_limit }}</span>
-                    </div>
-                    <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                            class="h-full bg-[#FF5722] rounded-full transition-[width] duration-300"
-                            :style="{ width: monthlyPercent + '%' }"
-                        ></div>
+            <div class="flex items-center gap-3">
+                <!-- New manual order button -->
+                <button
+                    type="button"
+                    :disabled="createDisabled"
+                    @click="router.visit(route('orders.create'))"
+                    class="flex items-center gap-2 bg-[#FF5722] hover:bg-[#D84315] text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-orange-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    :title="newOrderTitle"
+                >
+                    <span class="material-symbols-outlined text-lg" aria-hidden="true">add_shopping_cart</span>
+                    Nuevo pedido
+                </button>
+
+                <!-- Monthly usage -->
+                <div class="flex items-center gap-4 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 min-w-[280px]">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <span class="text-sm font-semibold text-gray-700">Pedidos del periodo</span>
+                            <span class="text-sm text-[#FF5722] font-bold">{{ monthly_count }}/{{ orders_limit }}</span>
+                        </div>
+                        <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                                class="h-full bg-[#FF5722] rounded-full transition-[width] duration-300"
+                                :style="{ width: monthlyPercent + '%' }"
+                            ></div>
+                        </div>
                     </div>
                 </div>
             </div>

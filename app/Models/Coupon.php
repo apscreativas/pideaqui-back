@@ -69,9 +69,22 @@ class Coupon extends Model
     }
 
     /**
+     * Validate the coupon for a given order context.
+     *
+     * When `$lockUses` is true, the count queries on `coupon_uses` are wrapped
+     * with `lockForUpdate()`. This is required when re-validating inside the
+     * order-creation transaction to prevent two concurrent orders from both
+     * passing `max_total_uses` / `max_uses_per_customer` checks. The caller
+     * MUST also `lockForUpdate()` the parent Coupon row before calling this,
+     * so concurrent callers serialize on that row lock.
+     *
+     * The public `/api/coupons/validate` endpoint calls this without locks;
+     * that pre-check is non-authoritative — the authoritative check happens
+     * inside `OrderService::store` with `$lockUses = true`.
+     *
      * @return array{valid: bool, reason: ?string}
      */
-    public function isValidForOrder(float $subtotal, string $customerPhone): array
+    public function isValidForOrder(float $subtotal, string $customerPhone, bool $lockUses = false): array
     {
         if (! $this->is_active) {
             return ['valid' => false, 'reason' => 'Este cupón no está activo.'];
@@ -90,14 +103,22 @@ class Coupon extends Model
         }
 
         if ($this->max_uses_per_customer !== null) {
-            $customerUses = $this->uses()->where('customer_phone', $customerPhone)->count();
+            $customerUsesQuery = $this->uses()->where('customer_phone', $customerPhone);
+            if ($lockUses) {
+                $customerUsesQuery->lockForUpdate();
+            }
+            $customerUses = $customerUsesQuery->count();
             if ($customerUses >= $this->max_uses_per_customer) {
                 return ['valid' => false, 'reason' => 'Ya usaste este cupón el máximo de veces permitido.'];
             }
         }
 
         if ($this->max_total_uses !== null) {
-            $totalUses = $this->uses()->count();
+            $totalUsesQuery = $this->uses();
+            if ($lockUses) {
+                $totalUsesQuery->lockForUpdate();
+            }
+            $totalUses = $totalUsesQuery->count();
             if ($totalUses >= $this->max_total_uses) {
                 return ['valid' => false, 'reason' => 'Este cupón ha alcanzado su límite de usos.'];
             }

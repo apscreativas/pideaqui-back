@@ -21,6 +21,7 @@ class Order extends Model
         'coupon_code',
         'delivery_type',
         'status',
+        'source',
         'scheduled_at',
         'subtotal',
         'delivery_cost',
@@ -38,6 +39,7 @@ class Order extends Model
         'longitude',
         'cancellation_reason',
         'cancelled_at',
+        'cancelled_by',
         'edited_at',
         'edit_count',
     ];
@@ -79,6 +81,11 @@ class Order extends Model
     public function coupon(): BelongsTo
     {
         return $this->belongsTo(Coupon::class);
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 
     public function isCancellable(): bool

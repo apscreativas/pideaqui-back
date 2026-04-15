@@ -9,17 +9,24 @@ const isAdmin = computed(() => usePage().props.auth.user?.is_admin === true)
 const props = defineProps({
     orders_count: Number,
     preparing_orders_count: Number,
+    pos_sales_count: { type: Number, default: 0 },
     monthly_orders_count: Number,
     orders_limit: Number,
     orders_limit_start: String,
     orders_limit_end: String,
-    net_profit: Number,
-    revenue: Number,
-    revenue_by_payment: Object,
+    net_profit: { type: Number, default: 0 },
+    expenses_total: { type: Number, default: 0 },
+    real_profit: { type: Number, default: 0 },
+    revenue: { type: Number, default: 0 },
+    revenue_breakdown: { type: Object, default: () => ({ orders: 0, pos: 0 }) },
+    revenue_by_payment: { type: Object, default: () => ({ cash: 0, terminal: 0, transfer: 0 }) },
     orders_by_branch: Array,
     recent_orders: Array,
     branches: Array,
     filters: Object,
+    channel: { type: String, default: null },
+    can_view_cash_metrics: { type: Boolean, default: false },
+    can_view_profit_metrics: { type: Boolean, default: false },
 })
 
 const from = ref(props.filters.from)
@@ -28,6 +35,7 @@ const branchId = ref(props.filters.branch_id || '')
 const statusFilter = ref(props.filters.status || '')
 const minAmount = ref(props.filters.min_amount || '')
 const maxAmount = ref(props.filters.max_amount || '')
+const channel = ref(props.filters.channel || '')
 const showAdvanced = ref(!!(props.filters.status || props.filters.min_amount || props.filters.max_amount))
 
 function applyFilter() {
@@ -36,7 +44,13 @@ function applyFilter() {
     if (statusFilter.value) { params.status = statusFilter.value }
     if (minAmount.value) { params.min_amount = minAmount.value }
     if (maxAmount.value) { params.max_amount = maxAmount.value }
+    if (channel.value) { params.channel = channel.value }
     router.get(route('dashboard'), params, { preserveState: true, preserveScroll: true })
+}
+
+function setChannel(value) {
+    channel.value = value
+    applyFilter()
 }
 
 function localDateStr(d) {
@@ -128,10 +142,12 @@ function orderNumber(id) {
 
 const STATUS_LABELS = {
     received: 'Recibido',
-    preparing: 'En preparacion',
+    preparing: 'En preparación',
     on_the_way: 'En camino',
     delivered: 'Entregado',
     cancelled: 'Cancelado',
+    ready: 'Lista',
+    paid: 'Cobrada',
 }
 
 const STATUS_CLASSES = {
@@ -140,6 +156,8 @@ const STATUS_CLASSES = {
     on_the_way: 'bg-blue-100 text-blue-800',
     delivered: 'bg-green-100 text-green-800',
     cancelled: 'bg-red-100 text-red-800',
+    ready: 'bg-blue-100 text-blue-800',
+    paid: 'bg-green-100 text-green-800',
 }
 
 const DELIVERY_LABELS = {
@@ -193,6 +211,23 @@ const activePreset = computed(() => {
                             ? 'bg-[#FF5722] text-white'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                     >{{ p.label }}</button>
+                </div>
+
+                <!-- Channel selector -->
+                <div class="flex gap-1">
+                    <button
+                        v-for="c in [
+                            { key: '', label: 'Todos' },
+                            { key: 'orders', label: 'Online' },
+                            { key: 'pos', label: 'POS' },
+                        ]"
+                        :key="c.key || 'all'"
+                        @click="setChannel(c.key)"
+                        class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                        :class="(channel || '') === c.key
+                            ? 'bg-[#FF5722] text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    >{{ c.label }}</button>
                 </div>
 
                 <!-- Branch selector -->
@@ -291,53 +326,127 @@ const activePreset = computed(() => {
         </Transition>
 
         <!-- KPI Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
 
-            <!-- Pedidos en rango -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start mb-4">
+            <!-- Pedidos online en rango -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
                     <div class="p-2 bg-blue-50 rounded-lg">
                         <span class="material-symbols-outlined text-blue-600">receipt_long</span>
                     </div>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos</p>
+                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos online</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ orders_count }}</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">cuentan al límite del plan</p>
+            </div>
+
+            <!-- Ventas POS -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="p-2 bg-purple-50 rounded-lg">
+                        <span class="material-symbols-outlined text-purple-600">point_of_sale</span>
+                    </div>
+                </div>
+                <p class="text-sm font-medium text-gray-500 mb-1">Ventas POS</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ pos_sales_count }}</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">no cuentan al límite del plan</p>
             </div>
 
             <!-- En preparación -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start mb-4">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
                     <div class="p-2 bg-orange-50 rounded-lg">
                         <span class="material-symbols-outlined text-orange-600">skillet</span>
                     </div>
                     <span class="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Activo</span>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">En preparacion</p>
+                <p class="text-sm font-medium text-gray-500 mb-1">En preparación</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ preparing_orders_count }}</h3>
             </div>
 
-            <!-- Ventas (admin only) -->
-            <div v-if="isAdmin" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start mb-4">
+            <!-- Ingresos totales — visible para admin + operator (métrica de caja) -->
+            <div v-if="can_view_cash_metrics" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
                     <div class="p-2 bg-emerald-50 rounded-lg">
-                        <span class="material-symbols-outlined text-emerald-600">point_of_sale</span>
+                        <span class="material-symbols-outlined text-emerald-600">trending_up</span>
                     </div>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Ventas</p>
+                <p class="text-sm font-medium text-gray-500 mb-1">Ingresos totales</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(revenue) }}</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5 truncate">
+                    Online {{ formatPrice(revenue_breakdown.orders) }} · POS {{ formatPrice(revenue_breakdown.pos) }}
+                </p>
             </div>
 
-            <!-- Ganancia neta (admin only) -->
-            <div v-if="isAdmin" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start mb-4">
+            <!-- Utilidad real — admin only (después de gastos) -->
+            <div v-if="can_view_profit_metrics" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
                     <div class="p-2 bg-green-50 rounded-lg">
                         <span class="material-symbols-outlined text-green-600">payments</span>
                     </div>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Ganancia neta</p>
-                <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(net_profit) }}</h3>
+                <p class="text-sm font-medium text-gray-500 mb-1">Utilidad real</p>
+                <h3 class="text-3xl font-bold" :class="real_profit < 0 ? 'text-red-600' : 'text-gray-900'">
+                    {{ formatPrice(real_profit) }}
+                </h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">después de gastos</p>
             </div>
 
+            <!-- Efectivo cobrado — reemplaza "Ganancia neta" para operator (cash-only replacement) -->
+            <div v-if="can_view_cash_metrics && !can_view_profit_metrics" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-3">
+                    <div class="p-2 bg-green-50 rounded-lg">
+                        <span class="material-symbols-outlined text-green-600">payments</span>
+                    </div>
+                </div>
+                <p class="text-sm font-medium text-gray-500 mb-1">Efectivo cobrado</p>
+                <h3 class="text-3xl font-bold text-gray-900">{{ formatPrice(revenue_by_payment.cash) }}</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">Monto físico por entregar</p>
+            </div>
+
+        </div>
+
+        <!-- Desglose financiero (admin) — flujo ingresos → costos → gastos → utilidad real -->
+        <div v-if="can_view_profit_metrics" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[#FF5722]">account_balance_wallet</span>
+                    Resumen del periodo
+                </h3>
+                <Link
+                    :href="route('expenses.index')"
+                    class="text-xs text-[#FF5722] hover:text-[#D84315] font-medium flex items-center gap-1"
+                >
+                    Ver gastos <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                </Link>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                    <p class="text-xs font-medium text-gray-500">Ingresos totales</p>
+                    <p class="text-xl font-bold text-gray-900 mt-1">{{ formatPrice(revenue) }}</p>
+                </div>
+                <div class="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                    <p class="text-xs font-medium text-gray-500">Utilidad bruta</p>
+                    <p class="text-xl font-bold text-gray-900 mt-1">{{ formatPrice(net_profit) }}</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">tras costo de producción</p>
+                </div>
+                <div class="p-4 rounded-xl border border-amber-100 bg-amber-50/50">
+                    <p class="text-xs font-medium text-amber-700">Gastos del periodo</p>
+                    <p class="text-xl font-bold text-amber-900 mt-1">− {{ formatPrice(expenses_total) }}</p>
+                </div>
+                <div
+                    class="p-4 rounded-xl border"
+                    :class="real_profit < 0 ? 'border-red-100 bg-red-50/50' : 'border-green-100 bg-green-50/50'"
+                >
+                    <p class="text-xs font-medium" :class="real_profit < 0 ? 'text-red-700' : 'text-green-700'">Utilidad real</p>
+                    <p class="text-xl font-bold mt-1" :class="real_profit < 0 ? 'text-red-900' : 'text-green-900'">
+                        {{ formatPrice(real_profit) }}
+                    </p>
+                    <p class="text-[11px] mt-0.5" :class="real_profit < 0 ? 'text-red-500' : 'text-green-600'">
+                        utilidad bruta − gastos
+                    </p>
+                </div>
+            </div>
         </div>
 
         <!-- Cobros por metodo de pago -->
@@ -411,10 +520,15 @@ const activePreset = computed(() => {
 
             <!-- Límite del periodo -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                <h3 class="text-lg font-bold text-gray-900 mb-6">Limite del periodo</h3>
+                <div class="mb-6">
+                    <h3 class="text-lg font-bold text-gray-900">Límite del periodo</h3>
+                    <p class="text-xs text-gray-400 mt-1">
+                        Solo pedidos de la app externa. Las ventas POS no cuentan al plan.
+                    </p>
+                </div>
                 <div class="space-y-4">
                     <div>
-                        <p class="text-sm text-gray-500 mb-1">Pedidos del periodo</p>
+                        <p class="text-sm text-gray-500 mb-1">Pedidos del plan</p>
                         <div class="flex items-baseline gap-2">
                             <p class="text-4xl font-bold text-gray-900">{{ monthly_orders_count }}</p>
                             <span class="text-sm text-gray-400">/ {{ orders_limit }}</span>
@@ -459,11 +573,11 @@ const activePreset = computed(() => {
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedido</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Referencia</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Canal</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha/hora</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente / Cajero</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sucursal</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipo</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
                             <th class="px-6 py-4"></th>
@@ -471,27 +585,37 @@ const activePreset = computed(() => {
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         <tr
-                            v-for="order in recent_orders"
-                            :key="order.id"
+                            v-for="row in recent_orders"
+                            :key="row.channel + '-' + row.id"
                             class="hover:bg-gray-50/50 transition-colors"
                         >
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ orderNumber(order.id) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ formatDateTime(order.created_at) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-700">{{ order.customer?.name ?? '—' }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-600">{{ order.branch?.name ?? '—' }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-600">{{ DELIVERY_LABELS[order.delivery_type] ?? order.delivery_type }}</td>
-                            <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{{ formatPrice(order.total) }}</td>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ row.reference }}</td>
+                            <td class="px-6 py-4">
+                                <span
+                                    class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border"
+                                    :class="row.channel === 'pos'
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'"
+                                >
+                                    <span class="material-symbols-outlined text-sm">{{ row.channel === 'pos' ? 'point_of_sale' : 'receipt_long' }}</span>
+                                    {{ row.channel === 'pos' ? 'POS' : 'Online' }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ formatDateTime(row.created_at) }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-700">{{ row.who ?? '—' }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-600">{{ row.branch?.name ?? '—' }}</td>
+                            <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{{ formatPrice(row.total) }}</td>
                             <td class="px-6 py-4">
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                                    :class="STATUS_CLASSES[order.status]"
+                                    :class="STATUS_CLASSES[row.status] ?? 'bg-gray-100 text-gray-600'"
                                 >
-                                    {{ STATUS_LABELS[order.status] ?? order.status }}
+                                    {{ STATUS_LABELS[row.status] ?? row.status }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-right">
                                 <Link
-                                    :href="route('orders.show', order.id)"
+                                    :href="row.channel === 'pos' ? route('pos.sales.show', row.id) : route('orders.show', row.id)"
                                     class="text-gray-400 hover:text-[#FF5722] transition-colors"
                                 >
                                     <span class="material-symbols-outlined">open_in_new</span>
@@ -500,7 +624,7 @@ const activePreset = computed(() => {
                         </tr>
                         <tr v-if="!recent_orders.length">
                             <td colspan="8" class="px-6 py-12 text-center text-sm text-gray-400">
-                                No hay pedidos en este periodo.
+                                No hay actividad en este periodo.
                             </td>
                         </tr>
                     </tbody>

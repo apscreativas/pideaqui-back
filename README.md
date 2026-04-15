@@ -8,18 +8,18 @@ Tambien sirve como backend API para la [SPA del cliente](../client/).
 
 ## Stack Tecnologico
 
-| Tecnologia | Version |
-|-----------|---------|
-| PHP | 8.5 |
-| Laravel | v12 |
-| PostgreSQL | 18 |
-| Laravel Sail | v1 (Docker) |
+| Tecnologia     | Version           |
+| -------------- | ----------------- |
+| PHP            | 8.5               |
+| Laravel        | v12               |
+| PostgreSQL     | 18                |
+| Laravel Sail   | v1 (Docker)       |
 | Laravel Reverb | v1.8 (WebSockets) |
-| Inertia.js | v2 |
-| Vue 3 | v3 |
-| Tailwind CSS | v4 |
-| PHPUnit | v11 |
-| Laravel Pint | v1 |
+| Inertia.js     | v2                |
+| Vue 3          | v3                |
+| Tailwind CSS   | v4                |
+| PHPUnit        | v11               |
+| Laravel Pint   | v1                |
 
 ---
 
@@ -146,11 +146,11 @@ AWS_BUCKET=
 
 La API key de Google Maps necesita tener habilitadas estas APIs en la [Google Cloud Console](https://console.cloud.google.com/apis):
 
-| API | Usado por | Requerida |
-|-----|-----------|-----------|
-| **Maps JavaScript API** | Mapas en panel admin (sucursales, pedidos, mapa operativo) | Si |
-| **Distance Matrix API** | Calculo de distancia real por calles (DeliveryService backend) | Si |
-| **Geocoding API** | Geocodificacion inversa (opcional, mejora precision de direcciones) | Opcional |
+| API                     | Usado por                                                           | Requerida |
+| ----------------------- | ------------------------------------------------------------------- | --------- |
+| **Maps JavaScript API** | Mapas en panel admin (sucursales, pedidos, mapa operativo)          | Si        |
+| **Distance Matrix API** | Calculo de distancia real por calles (DeliveryService backend)      | Si        |
+| **Geocoding API**       | Geocodificacion inversa (opcional, mejora precision de direcciones) | Opcional  |
 
 > En desarrollo puedes usar una sola key sin restricciones. En produccion, se recomienda crear dos keys separadas: una restringida por **HTTP referrer** (para `VITE_GOOGLE_MAPS_KEY`) y otra restringida por **IP del servidor** (para `GOOGLE_MAPS_API_KEY`).
 
@@ -166,6 +166,7 @@ La API key de Google Maps necesita tener habilitadas estas APIs en la [Google Cl
 ```
 
 Esto inicia concurrentemente:
+
 - Servidor Laravel
 - Queue worker
 - Log viewer (Pail)
@@ -284,13 +285,13 @@ admin/
 Todas las rutas requieren un token `Bearer` en el header `Authorization`.
 El token es el `access_token` del restaurante.
 
-| Metodo | Endpoint | Descripcion | Rate Limit |
-|--------|----------|-------------|------------|
-| `GET` | `/api/restaurant` | Info del restaurante, horarios, metodos de pago | — |
-| `GET` | `/api/menu` | Menu completo con categorias, productos, modificadores | — |
-| `GET` | `/api/branches` | Lista de sucursales activas | — |
-| `POST` | `/api/delivery/calculate` | Calcular costo de envio y sucursal optima | — |
-| `POST` | `/api/orders` | Crear un nuevo pedido | 30/min |
+| Metodo | Endpoint                  | Descripcion                                            | Rate Limit |
+| ------ | ------------------------- | ------------------------------------------------------ | ---------- |
+| `GET`  | `/api/restaurant`         | Info del restaurante, horarios, metodos de pago        | —          |
+| `GET`  | `/api/menu`               | Menu completo con categorias, productos, modificadores | —          |
+| `GET`  | `/api/branches`           | Lista de sucursales activas                            | —          |
+| `POST` | `/api/delivery/calculate` | Calcular costo de envio y sucursal optima              | —          |
+| `POST` | `/api/orders`             | Crear un nuevo pedido                                  | 30/min     |
 
 ### Autenticacion
 
@@ -358,10 +359,10 @@ El tablero Kanban de pedidos se actualiza en tiempo real via Laravel Reverb:
 
 El sistema soporta un **modelo hibrido** de planes:
 
-| Modo | Descripcion | Fuente de limites |
-|------|-------------|-------------------|
-| **Manual** | SuperAdmin define limites directamente | `orders_limit`, `max_branches`, `orders_limit_start/end` en BD |
-| **Suscripcion** | Restaurante elige plan y paga via Stripe | Plan asignado + periodo de Stripe |
+| Modo            | Descripcion                              | Fuente de limites                                              |
+| --------------- | ---------------------------------------- | -------------------------------------------------------------- |
+| **Manual**      | SuperAdmin define limites directamente   | `orders_limit`, `max_branches`, `orders_limit_start/end` en BD |
+| **Suscripcion** | Restaurante elige plan y paga via Stripe | Plan asignado + periodo de Stripe                              |
 
 ### Configurar Stripe
 
@@ -402,12 +403,12 @@ En [Stripe Dashboard > Developers > Webhooks](https://dashboard.stripe.com/webho
 1. Click **"Add endpoint"**
 2. **URL**: `https://tu-dominio.com/stripe/webhook`
 3. **Eventos a escuchar** (seleccionar estos 6):
-   - `checkout.session.completed`
-   - `customer.subscription.created`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.paid`
-   - `invoice.payment_failed`
+    - `checkout.session.completed`
+    - `customer.subscription.created`
+    - `customer.subscription.updated`
+    - `customer.subscription.deleted`
+    - `invoice.paid`
+    - `invoice.payment_failed`
 4. Click **"Add endpoint"**
 5. En la pagina del endpoint, click **"Reveal"** en el signing secret
 6. Copia el `whsec_...` y ponlo en tu `.env`:
@@ -417,46 +418,54 @@ STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxx
 ```
 
 > **Importante**: En desarrollo local, usa el [Stripe CLI](https://stripe.com/docs/stripe-cli) para reenviar webhooks:
+>
 > ```bash
 > stripe listen --forward-to http://localhost/stripe/webhook
 > ```
+>
 > El CLI te da un `whsec_...` temporal que debes poner en `.env`.
 
 #### 5. Seeders de billing
 
 ```bash
-# Crear planes base (Gracia, Basico, Pro, Enterprise)
+# Crear configuracion minima de billing:
+# - plan de gracia
+# - billing settings globales
 php artisan db:seed --class=BillingSeeder --force
 
+# Crear planes comerciales desde SuperAdmin > Planes
+# (Basico, Pro, Enterprise, etc.) antes de habilitar checkout en produccion.
+
 # (Opcional) Asignar planes a restaurantes existentes sin plan
+# Requiere que ya existan planes comerciales activos.
 php artisan billing:backfill-plans --dry-run   # Ver que haria
 php artisan billing:backfill-plans             # Ejecutar
 ```
 
 ### Flujos de billing
 
-| Flujo | Que pasa |
-|-------|----------|
-| **Nuevo restaurante (manual)** | SuperAdmin crea con limites manuales. Sin Stripe. |
+| Flujo                          | Que pasa                                                                                            |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| **Nuevo restaurante (manual)** | SuperAdmin crea con limites manuales. Sin Stripe.                                                   |
 | **Nuevo restaurante (gracia)** | SuperAdmin crea con periodo de gracia (14 dias). Restaurante elige plan y paga via Stripe Checkout. |
-| **Upgrade** | Cambio inmediato. Stripe cobra diferencia prorrateada con `swapAndInvoice()`. |
-| **Downgrade** | Programado para el siguiente ciclo. Restaurante mantiene beneficios actuales hasta fin de periodo. |
-| **Pago fallido** | Stripe reintenta. Restaurante entra en `grace_period` (7 dias). Si no paga, se suspende. |
-| **Cancelacion** | Restaurante sigue activo hasta fin del periodo pagado. Despues se suspende. |
-| **Manual → Suscripcion** | Restaurante o SuperAdmin inicia gracia. Restaurante elige plan. |
-| **Suscripcion → Manual** | SuperAdmin cambia a manual. Stripe se cancela. Limites manuales aplican. |
+| **Upgrade**                    | Cambio inmediato. Stripe cobra diferencia prorrateada con `swapAndInvoice()`.                       |
+| **Downgrade**                  | Programado para el siguiente ciclo. Restaurante mantiene beneficios actuales hasta fin de periodo.  |
+| **Pago fallido**               | Stripe reintenta. Restaurante entra en `grace_period` (7 dias). Si no paga, se suspende.            |
+| **Cancelacion**                | Restaurante sigue activo hasta fin del periodo pagado. Despues se suspende.                         |
+| **Manual → Suscripcion**       | Restaurante o SuperAdmin inicia gracia. Restaurante elige plan.                                     |
+| **Suscripcion → Manual**       | SuperAdmin cambia a manual. Stripe se cancela. Limites manuales aplican.                            |
 
 ### Cron jobs de billing
 
 Estos comandos corren automaticamente via el scheduler de Laravel:
 
-| Comando | Frecuencia | Que hace |
-|---------|-----------|----------|
-| `billing:check-grace` | Diario 06:00 | Suspende restaurantes con gracia expirada |
-| `billing:check-canceled` | Diario 06:05 | Suspende suscripciones canceladas cuyo periodo termino |
-| `billing:send-reminders` | Diario 08:00 | Envia recordatorio antes de que expire la gracia |
-| `billing:reconcile` | Diario 03:00 | Sincroniza estado local con Stripe |
-| `billing:apply-pending-downgrades` | Cada hora | Aplica downgrades programados cuya fecha ya paso |
+| Comando                            | Frecuencia   | Que hace                                               |
+| ---------------------------------- | ------------ | ------------------------------------------------------ |
+| `billing:check-grace`              | Diario 06:00 | Suspende restaurantes con gracia expirada              |
+| `billing:check-canceled`           | Diario 06:05 | Suspende suscripciones canceladas cuyo periodo termino |
+| `billing:send-reminders`           | Diario 08:00 | Envia recordatorio antes de que expire la gracia       |
+| `billing:reconcile`                | Diario 03:00 | Sincroniza estado local con Stripe                     |
+| `billing:apply-pending-downgrades` | Cada hora    | Aplica downgrades programados cuya fecha ya paso       |
 
 > En Laravel Cloud, habilita el toggle **"Scheduler"** en el compute cluster. En servidor propio, configura el cron: `* * * * * php artisan schedule:run >> /dev/null 2>&1`
 
@@ -464,15 +473,15 @@ Estos comandos corren automaticamente via el scheduler de Laravel:
 
 ## Servicios Externos
 
-| Servicio | Uso | Variable de entorno |
-|----------|-----|---------------------|
-| **Stripe** | Pagos y suscripciones SaaS | `STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET` |
-| **Google Maps JavaScript API** | Mapas interactivos en panel admin | `VITE_GOOGLE_MAPS_KEY` |
-| **Google Distance Matrix API** | Distancia real por calles (backend) | `GOOGLE_MAPS_API_KEY` |
-| **WhatsApp (wa.me)** | Mensaje preestructurado con el pedido | — |
-| **AWS S3** (produccion) | Imagenes de productos y logos | `AWS_*` |
-| **SMTP** (produccion) | Notificacion email de nuevos pedidos | `MAIL_*` |
-| **Laravel Reverb** | WebSockets para tablero en tiempo real | `REVERB_*` |
+| Servicio                       | Uso                                    | Variable de entorno                                    |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------ |
+| **Stripe**                     | Pagos y suscripciones SaaS             | `STRIPE_KEY`, `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET` |
+| **Google Maps JavaScript API** | Mapas interactivos en panel admin      | `VITE_GOOGLE_MAPS_KEY`                                 |
+| **Google Distance Matrix API** | Distancia real por calles (backend)    | `GOOGLE_MAPS_API_KEY`                                  |
+| **WhatsApp (wa.me)**           | Mensaje preestructurado con el pedido  | —                                                      |
+| **AWS S3** (produccion)        | Imagenes de productos y logos          | `AWS_*`                                                |
+| **SMTP** (produccion)          | Notificacion email de nuevos pedidos   | `MAIL_*`                                               |
+| **Laravel Reverb**             | WebSockets para tablero en tiempo real | `REVERB_*`                                             |
 
 ---
 
@@ -542,6 +551,7 @@ MAIL_FROM_NAME="PideAqui"
 En el dashboard de Laravel Cloud, configura:
 
 **Build Commands:**
+
 ```
 composer install --no-dev --optimize-autoloader
 npm ci
@@ -550,6 +560,7 @@ php artisan optimize
 ```
 
 **Deploy Commands:**
+
 ```
 php artisan migrate --force
 ```
@@ -559,10 +570,11 @@ php artisan migrate --force
 Despues del primer deploy, ejecuta estos comandos desde el tab **Commands** del environment:
 
 ```bash
-# Crear planes de billing
+# Crear configuracion inicial de billing (plan de gracia + settings)
 php artisan db:seed --class=BillingSeeder --force
 
-# Sincronizar planes con Stripe (crea Products y Prices)
+# Luego entra a SuperAdmin > Planes y crea los planes comerciales.
+# Cuando existan, sincronizalos con Stripe (crea Products y Prices)
 php artisan billing:sync-stripe
 ```
 
@@ -597,6 +609,7 @@ Para desplegar en un VPS con Docker Compose sin depender de Laravel Cloud.
 #### 1. Preparar el servidor
 
 Requisitos del servidor:
+
 - Docker Engine 24+
 - Docker Compose v2+
 - Dominio con DNS apuntando al servidor
@@ -615,90 +628,99 @@ cp .env.example .env
 
 ```yaml
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - CONTAINER_ROLE=app
-    volumes:
-      - storage:/var/www/html/storage/app
-    depends_on:
-      pgsql:
-        condition: service_healthy
-    env_file: .env
-    networks:
-      - pideaqui
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        restart: unless-stopped
+        ports:
+            - "80:80"
+            - "443:443"
+        environment:
+            - CONTAINER_ROLE=app
+        volumes:
+            - storage:/var/www/html/storage/app
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        env_file: .env
+        networks:
+            - pideaqui
 
-  queue:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    restart: unless-stopped
-    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
-    depends_on:
-      pgsql:
-        condition: service_healthy
-    env_file: .env
-    networks:
-      - pideaqui
+    queue:
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        restart: unless-stopped
+        command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        env_file: .env
+        networks:
+            - pideaqui
 
-  reverb:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    restart: unless-stopped
-    ports:
-      - "${REVERB_PORT:-8080}:${REVERB_PORT:-8080}"
-    command: php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080}
-    depends_on:
-      pgsql:
-        condition: service_healthy
-    env_file: .env
-    networks:
-      - pideaqui
+    reverb:
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        restart: unless-stopped
+        ports:
+            - "${REVERB_PORT:-8080}:${REVERB_PORT:-8080}"
+        command: php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080}
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        env_file: .env
+        networks:
+            - pideaqui
 
-  scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    restart: unless-stopped
-    command: >
-      sh -c "while true; do php artisan schedule:run --no-interaction; sleep 60; done"
-    depends_on:
-      pgsql:
-        condition: service_healthy
-    env_file: .env
-    networks:
-      - pideaqui
+    scheduler:
+        build:
+            context: .
+            dockerfile: Dockerfile.prod
+        restart: unless-stopped
+        command: >
+            sh -c "while true; do php artisan schedule:run --no-interaction; sleep 60; done"
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        env_file: .env
+        networks:
+            - pideaqui
 
-  pgsql:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_DATABASE}
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgsql-data:/var/lib/postgresql/data
-    networks:
-      - pideaqui
-    healthcheck:
-      test: ["CMD", "pg_isready", "-q", "-d", "${DB_DATABASE}", "-U", "${DB_USERNAME}"]
-      retries: 3
-      timeout: 5s
+    pgsql:
+        image: postgres:18-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${DB_DATABASE}
+            POSTGRES_USER: ${DB_USERNAME}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - pgsql-data:/var/lib/postgresql/data
+        networks:
+            - pideaqui
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "pg_isready",
+                    "-q",
+                    "-d",
+                    "${DB_DATABASE}",
+                    "-U",
+                    "${DB_USERNAME}",
+                ]
+            retries: 3
+            timeout: 5s
 
 networks:
-  pideaqui:
-    driver: bridge
+    pideaqui:
+        driver: bridge
 
 volumes:
-  storage:
-  pgsql-data:
+    storage:
+    pgsql-data:
 ```
 
 #### 4. Crear `Dockerfile.prod`

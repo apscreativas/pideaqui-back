@@ -27,6 +27,7 @@ class DashboardController extends Controller
             'status' => ['nullable', 'string'],
             'min_amount' => ['nullable', 'numeric', 'min:0'],
             'max_amount' => ['nullable', 'numeric', 'min:0'],
+            'channel' => ['nullable', Rule::in(['orders', 'pos'])],
         ]);
 
         $from = $request->input('from') ? Carbon::parse($request->input('from'))->startOfDay() : today()->startOfDay();
@@ -56,12 +57,22 @@ class DashboardController extends Controller
 
         $minAmount = $request->filled('min_amount') ? (float) $request->input('min_amount') : null;
         $maxAmount = $request->filled('max_amount') ? (float) $request->input('max_amount') : null;
+        $channel = $request->filled('channel') ? (string) $request->input('channel') : null;
 
-        $data = $this->statistics->getDashboardData($restaurant, $from, $to, $effectiveBranches, $statuses, $minAmount, $maxAmount);
+        $data = $this->statistics->getDashboardData($restaurant, $from, $to, $effectiveBranches, $statuses, $minAmount, $maxAmount, $channel);
 
-        if ($user->isOperator()) {
-            unset($data['net_profit'], $data['revenue']);
+        // Cash metrics (revenue, breakdown, payment methods) are visible to both
+        // admin and operator — operators need to know how much cash passed through
+        // the register and what method it came via, to reconcile end-of-shift.
+        // Profit/cost metrics (net_profit, expenses_total, real_profit) are
+        // admin-only — sensitive business data.
+        if (! $user->canViewProfitMetrics()) {
+            unset($data['net_profit'], $data['expenses_total'], $data['real_profit']);
         }
+
+        $data['can_view_financials'] = $user->canViewFinancials();
+        $data['can_view_cash_metrics'] = $user->canViewCashMetrics();
+        $data['can_view_profit_metrics'] = $user->canViewProfitMetrics();
 
         // Load branches for the selector (scoped to user's access).
         $branches = Branch::where('restaurant_id', $restaurant->id)
@@ -77,6 +88,7 @@ class DashboardController extends Controller
             'status' => $request->input('status', ''),
             'min_amount' => $request->input('min_amount', ''),
             'max_amount' => $request->input('max_amount', ''),
+            'channel' => $request->input('channel', ''),
         ];
         $data['orders_limit_start'] = $restaurant->orders_limit_start?->toDateString();
         $data['orders_limit_end'] = $restaurant->orders_limit_end?->toDateString();

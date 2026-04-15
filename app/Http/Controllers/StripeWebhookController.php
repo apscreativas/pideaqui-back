@@ -7,11 +7,52 @@ use App\Models\BillingSetting;
 use App\Models\Plan;
 use App\Models\Restaurant;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Http\Controllers\WebhookController;
+use Symfony\Component\HttpFoundation\Response;
 
 class StripeWebhookController extends WebhookController
 {
+    /**
+     * Handle a Stripe webhook with idempotency via stripe_event_id.
+     *
+     * Stripe retries webhooks on network hiccups and non-2xx responses.
+     * Processing the same event twice would duplicate BillingAudit entries
+     * and re-assign plans. A UNIQUE constraint on stripe_event_id turns this
+     * into a fast no-op for duplicates.
+     *
+     * @return \Symfony\Component\HttpFoundation\Response
+     */
+    public function handleWebhook(Request $request)
+    {
+        $payload = json_decode($request->getContent(), true);
+        $eventId = $payload['id'] ?? null;
+        $eventType = $payload['type'] ?? null;
+
+        if (! $eventId || ! $eventType) {
+            return parent::handleWebhook($request);
+        }
+
+        // insertOrIgnore returns the number of rows actually inserted:
+        // 0 means the event_id was already present (Postgres/SQLite/MySQL).
+        // This avoids throwing UniqueConstraintViolationException mid-transaction,
+        // which would abort the surrounding connection on PostgreSQL.
+        $inserted = DB::table('stripe_webhook_events')->insertOrIgnore([
+            'stripe_event_id' => $eventId,
+            'type' => $eventType,
+            'processed_at' => now(),
+        ]);
+
+        if ($inserted === 0) {
+            // Duplicate — return 200 so Stripe stops retrying.
+            return new Response('Event already processed', 200);
+        }
+
+        return parent::handleWebhook($request);
+    }
+
     public function handleCheckoutSessionCompleted(array $payload): void
     {
         $session = $payload['data']['object'];

@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class CategoryController extends Controller
@@ -85,13 +86,26 @@ class CategoryController extends Controller
         ]);
 
         $restaurantId = $request->user()->restaurant_id;
+        $ids = $request->input('ids');
 
-        foreach ($request->input('ids') as $index => $id) {
+        // Lock the affected tenant rows and renumber atomically so concurrent
+        // reorder requests serialize instead of interleaving writes. Cross-
+        // tenant ids are silently skipped by the `where restaurant_id` clause
+        // — they cannot corrupt another tenant's order.
+        DB::transaction(function () use ($ids, $restaurantId): void {
             Category::query()
-                ->where('id', $id)
                 ->where('restaurant_id', $restaurantId)
-                ->update(['sort_order' => $index]);
-        }
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get(['id']);
+
+            foreach ($ids as $index => $id) {
+                Category::query()
+                    ->where('id', $id)
+                    ->where('restaurant_id', $restaurantId)
+                    ->update(['sort_order' => $index]);
+            }
+        });
 
         return redirect()->route('menu.index');
     }

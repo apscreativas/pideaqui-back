@@ -288,12 +288,15 @@ function managePayment() {
                         <div class="grid grid-cols-2 gap-4">
                             <div class="bg-gray-50 rounded-xl p-4">
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-xs font-medium text-gray-500">Pedidos</span>
+                                    <span class="text-xs font-medium text-gray-500">Pedidos online</span>
                                     <span class="text-xs font-bold text-gray-900">{{ restaurant.orders_count }} / {{ restaurant.orders_limit }}</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                                     <div class="h-full rounded-full transition-all" :class="barClass(ordersPercent)" :style="{ width: ordersPercent + '%' }"></div>
                                 </div>
+                                <p class="text-[11px] text-gray-400 mt-1.5 leading-snug">
+                                    Solo app externa / menú digital.
+                                </p>
                             </div>
                             <div class="bg-gray-50 rounded-xl p-4">
                                 <div class="flex items-center justify-between mb-2">
@@ -304,6 +307,13 @@ function managePayment() {
                                     <div class="h-full rounded-full transition-all" :class="barClass(branchesPercent)" :style="{ width: branchesPercent + '%' }"></div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="flex items-start gap-2 text-xs text-gray-500">
+                            <span class="material-symbols-outlined text-gray-400 text-base mt-0.5">info</span>
+                            <span>
+                                El conteo de pedidos del plan <span class="font-semibold">no incluye ventas POS</span>.
+                                Las ventas del punto de venta del restaurante son <span class="font-semibold">ilimitadas</span>.
+                            </span>
                         </div>
                     </div>
 
@@ -470,11 +480,15 @@ function managePayment() {
                             <ul class="space-y-2.5">
                                 <li class="flex items-center gap-2.5 text-sm text-gray-700">
                                     <span class="material-symbols-outlined text-green-500 text-base" style="font-variation-settings:'FILL' 1">check_circle</span>
-                                    Hasta <strong class="mx-0.5">{{ plan.orders_limit.toLocaleString('es-MX') }}</strong> pedidos/mes
+                                    Hasta <strong class="mx-0.5">{{ plan.orders_limit.toLocaleString('es-MX') }}</strong> pedidos online/mes
                                 </li>
                                 <li class="flex items-center gap-2.5 text-sm text-gray-700">
                                     <span class="material-symbols-outlined text-green-500 text-base" style="font-variation-settings:'FILL' 1">check_circle</span>
                                     Hasta <strong class="mx-0.5">{{ plan.max_branches }}</strong> {{ plan.max_branches === 1 ? 'sucursal' : 'sucursales' }}
+                                </li>
+                                <li class="flex items-center gap-2.5 text-sm text-gray-700">
+                                    <span class="material-symbols-outlined text-green-500 text-base" style="font-variation-settings:'FILL' 1">check_circle</span>
+                                    Ventas POS <strong class="mx-0.5">ilimitadas</strong>
                                 </li>
                                 <li class="flex items-center gap-2.5 text-sm text-gray-700">
                                     <span class="material-symbols-outlined text-green-500 text-base" style="font-variation-settings:'FILL' 1">check_circle</span>

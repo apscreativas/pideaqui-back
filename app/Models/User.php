@@ -57,6 +57,35 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether the user can view cost/profit/margin data — sensitive business info.
+     * Used for production_cost, net_profit and margin-derived data across orders/POS.
+     * Alias of canViewProfitMetrics().
+     */
+    public function canViewFinancials(): bool
+    {
+        return $this->canViewProfitMetrics();
+    }
+
+    /**
+     * Whether the user can view cash/revenue/payment-breakdown metrics.
+     * Needed by operators to reconcile register and know how much money moved today.
+     * NOT sensitive — does NOT reveal production costs nor profit.
+     */
+    public function canViewCashMetrics(): bool
+    {
+        return $this->isAdmin() || $this->isOperator();
+    }
+
+    /**
+     * Whether the user can view profitability metrics (net_profit, margin, cost).
+     * Restaurant-level sensitive data — admin only.
+     */
+    public function canViewProfitMetrics(): bool
+    {
+        return $this->isAdmin();
+    }
+
+    /**
      * Get the branch IDs this user can access.
      * Admins can access all branches; operators only their assigned ones.
      *

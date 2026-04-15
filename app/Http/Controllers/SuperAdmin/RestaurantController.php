@@ -249,11 +249,39 @@ class RestaurantController extends Controller
             'days' => ['required', 'integer', 'min:1', 'max:90'],
         ]);
 
+        $previousMode = $restaurant->billing_mode;
+        $canceledStripe = false;
+
+        // If the restaurant already has an active Stripe subscription, cancel
+        // it before forcing grace. Otherwise Stripe would keep charging while
+        // the local state says "grace_period". Use cancelNow() because we want
+        // an immediate teardown — the SuperAdmin is intentionally resetting
+        // the restaurant to a grace state.
+        if ($restaurant->isSubscriptionMode() && $restaurant->subscribed('default')) {
+            $subscription = $restaurant->subscription('default');
+
+            try {
+                $subscription->cancelNow();
+                $canceledStripe = true;
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to cancel Stripe subscription before starting grace', [
+                    'restaurant_id' => $restaurant->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return back()->with('error', 'No se pudo cancelar la suscripción Stripe existente. Revisa los logs antes de reintentar.');
+            }
+        }
+
         $gracePlan = Plan::gracePlan();
 
         $restaurant->update([
             'billing_mode' => 'subscription',
             'plan_id' => $gracePlan?->id,
+            'subscription_ends_at' => null,
+            'pending_plan_id' => null,
+            'pending_plan_effective_at' => null,
+            'pending_billing_cycle' => null,
         ]);
 
         $restaurant->transitionTo('grace_period', [
@@ -267,12 +295,18 @@ class RestaurantController extends Controller
             actorId: $request->user('superadmin')->id,
             payload: [
                 'days' => $data['days'],
-                'previous_mode' => 'manual',
+                'previous_mode' => $previousMode,
+                'stripe_subscription_canceled' => $canceledStripe,
             ],
             ipAddress: $request->ip(),
         );
 
-        return back()->with('success', "Periodo de gracia iniciado ({$data['days']} días). El restaurante debe elegir su plan.");
+        $msg = "Periodo de gracia iniciado ({$data['days']} días). El restaurante debe elegir su plan.";
+        if ($canceledStripe) {
+            $msg .= ' La suscripción Stripe anterior fue cancelada.';
+        }
+
+        return back()->with('success', $msg);
     }
 
     public function extendGrace(Request $request, Restaurant $restaurant): RedirectResponse

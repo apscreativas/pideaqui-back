@@ -15,6 +15,36 @@ class LimitService
     }
 
     /**
+     * Single source of truth for limit-related state. Resolves the effective limit
+     * for the restaurant's current billing mode (subscription → plan, manual → restaurant)
+     * and never leaks the legacy `restaurant->orders_limit` column when in subscription mode.
+     *
+     * @return array{
+     *     used: int,
+     *     limit: int,
+     *     reason: 'limit_reached'|'period_expired'|'period_not_started'|null,
+     *     can_create: bool,
+     *     period: array{start: ?string, end: ?string}
+     * }
+     */
+    public function summary(Restaurant $restaurant): array
+    {
+        $reason = $this->limitReason($restaurant);
+        $period = $this->getCurrentPeriod($restaurant);
+
+        return [
+            'used' => $this->orderCountInPeriod($restaurant),
+            'limit' => $this->getOrdersLimit($restaurant),
+            'reason' => $reason,
+            'can_create' => $reason === null,
+            'period' => [
+                'start' => $period ? $period['start']->toDateString() : null,
+                'end' => $period ? $period['end']->toDateString() : null,
+            ],
+        ];
+    }
+
+    /**
      * @return 'period_not_started'|'period_expired'|'limit_reached'|null
      */
     public function limitReason(Restaurant $restaurant): ?string

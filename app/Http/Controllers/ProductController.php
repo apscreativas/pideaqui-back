@@ -9,6 +9,7 @@ use App\Models\ModifierGroupTemplate;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -147,13 +148,27 @@ class ProductController extends Controller
         ]);
 
         $restaurantId = $request->user()->restaurant_id;
+        $ids = $request->input('ids');
 
-        foreach ($request->input('ids') as $index => $id) {
+        // Lock the affected tenant rows and renumber atomically so concurrent
+        // reorder requests serialize. Cross-tenant ids are silently skipped
+        // by the `where restaurant_id` clause — they cannot corrupt another
+        // tenant's sort order. UI is expected to only submit ids from a
+        // single category; mixing categories will just renumber across them.
+        DB::transaction(function () use ($ids, $restaurantId): void {
             Product::query()
-                ->where('id', $id)
                 ->where('restaurant_id', $restaurantId)
-                ->update(['sort_order' => $index]);
-        }
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get(['id']);
+
+            foreach ($ids as $index => $id) {
+                Product::query()
+                    ->where('id', $id)
+                    ->where('restaurant_id', $restaurantId)
+                    ->update(['sort_order' => $index]);
+            }
+        });
 
         return redirect()->route('menu.index');
     }

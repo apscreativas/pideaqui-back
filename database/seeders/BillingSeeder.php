@@ -23,42 +23,7 @@ class BillingSeeder extends Seeder
             'sort_order' => 0,
         ]);
 
-        // Planes comerciales
-        Plan::query()->updateOrCreate(['slug' => 'basico'], [
-            'name' => 'Básico',
-            'description' => 'Ideal para empezar tu negocio digital',
-            'orders_limit' => 300,
-            'max_branches' => 1,
-            'monthly_price' => 499.00,
-            'yearly_price' => 4990.00,
-            'is_default_grace' => false,
-            'is_active' => true,
-            'sort_order' => 1,
-        ]);
-
-        Plan::query()->updateOrCreate(['slug' => 'pro'], [
-            'name' => 'Pro',
-            'description' => 'Para restaurantes en crecimiento',
-            'orders_limit' => 1000,
-            'max_branches' => 3,
-            'monthly_price' => 999.00,
-            'yearly_price' => 9990.00,
-            'is_default_grace' => false,
-            'is_active' => true,
-            'sort_order' => 2,
-        ]);
-
-        Plan::query()->updateOrCreate(['slug' => 'enterprise'], [
-            'name' => 'Enterprise',
-            'description' => 'Para cadenas y alto volumen',
-            'orders_limit' => 5000,
-            'max_branches' => 10,
-            'monthly_price' => 2499.00,
-            'yearly_price' => 24990.00,
-            'is_default_grace' => false,
-            'is_active' => true,
-            'sort_order' => 3,
-        ]);
+        
 
         // Configuración de billing
         BillingSetting::set('initial_grace_period_days', '14');

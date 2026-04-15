@@ -47,7 +47,7 @@ class SubscriptionController extends Controller
         ]);
     }
 
-    public function checkout(Request $request): SymfonyResponse
+    public function checkout(Request $request): SymfonyResponse|RedirectResponse
     {
         $request->validate([
             'plan_id' => ['required', 'integer', 'exists:plans,id'],
@@ -61,6 +61,21 @@ class SubscriptionController extends Controller
         }
 
         $restaurant = $request->user()->restaurant;
+
+        // Guardrail: a restaurant in manual mode should NOT be able to
+        // start a Stripe subscription without first going through
+        // initiateSubscription (or SuperAdmin startGracePeriod). Otherwise
+        // we end up with billing_mode='manual' + live Stripe subscription —
+        // an inconsistent state that no cron or reconcile job expects.
+        if ($restaurant->isManualMode()) {
+            return back()->with('error', 'Antes de elegir un plan, activa tu periodo de prueba.');
+        }
+
+        // Guardrail: cannot checkout if already subscribed. The user must
+        // use swap/cancel paths instead.
+        if ($restaurant->subscribed('default')) {
+            return back()->with('error', 'Ya tienes una suscripción activa. Usa "Cambiar plan" si quieres modificarla.');
+        }
 
         $priceId = $request->billing_cycle === 'yearly'
             ? $plan->stripe_yearly_price_id

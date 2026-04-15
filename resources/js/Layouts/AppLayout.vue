@@ -40,12 +40,14 @@ const isAdmin = computed(() => user.value?.is_admin === true)
 
 const allNavItems = [
     { name: 'Dashboard', route: 'dashboard', icon: 'dashboard', roles: ['admin', 'operator'] },
+    { name: 'POS', route: 'pos.index', icon: 'point_of_sale', roles: ['admin', 'operator'] },
     { name: 'Pedidos', route: 'orders.index', icon: 'receipt_long', roles: ['admin', 'operator'] },
     { name: 'Menú Digital', route: 'menu.index', icon: 'restaurant_menu', roles: ['admin'] },
     { name: 'Catálogo Modif.', route: 'modifier-catalog.index', icon: 'tune', roles: ['admin'] },
     { name: 'Promociones', route: 'promotions.index', icon: 'sell', roles: ['admin'] },
     { name: 'Cupones', route: 'coupons.index', icon: 'confirmation_number', roles: ['admin'] },
     { name: 'Cancelaciones', route: 'cancellations.index', icon: 'cancel', roles: ['admin'] },
+    { name: 'Gastos', route: 'expenses.index', icon: 'trending_down', roles: ['admin'] },
     { name: 'Mapa', route: 'map.index', icon: 'map', roles: ['admin', 'operator'] },
     { name: 'Sucursales', route: 'branches.index', icon: 'store', roles: ['admin'] },
     { name: 'Configuración', route: 'settings.index', icon: 'settings', roles: ['admin'] },

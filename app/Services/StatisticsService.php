@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Branch;
+use App\Models\Expense;
 use App\Models\Order;
+use App\Models\PosSale;
 use App\Models\Restaurant;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,6 +17,7 @@ class StatisticsService
     /**
      * @param  list<int>|null  $branchIds  null = all branches (admin)
      * @param  list<string>|null  $statuses  null = all statuses
+     * @param  'orders'|'pos'|null  $channel  null = both; 'orders' = solo app externa; 'pos' = solo punto de venta
      * @return array<string, mixed>
      */
     public function getDashboardData(
@@ -25,21 +28,204 @@ class StatisticsService
         ?array $statuses = null,
         ?float $minAmount = null,
         ?float $maxAmount = null,
+        ?string $channel = null,
     ): array {
         $limitService = app(LimitService::class);
         $restaurantId = $restaurant->id;
 
+        $includeOrders = $channel !== 'pos';
+        $includePos = $channel !== 'orders';
+
+        $ordersRevenue = $includeOrders ? $this->revenue($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : 0.0;
+        $posRevenue = $includePos ? $this->posRevenue($restaurantId, $from, $to, $branchIds) : 0.0;
+        $ordersProfit = $includeOrders ? $this->netProfit($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : 0.0;
+        $posProfit = $includePos ? $this->posNetProfit($restaurantId, $from, $to, $branchIds) : 0.0;
+
+        $byPayment = $includeOrders ? $this->revenueByPayment($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : ['cash' => 0.0, 'terminal' => 0.0, 'transfer' => 0.0];
+        $posByPayment = $includePos ? $this->posRevenueByPayment($restaurantId, $from, $to, $branchIds) : ['cash' => 0.0, 'terminal' => 0.0, 'transfer' => 0.0];
+
+        // Expenses are restaurant-level (no channel) — always computed for the period.
+        $expensesTotal = $this->expensesTotal($restaurantId, $from, $to, $branchIds);
+        $grossProfit = round($ordersProfit + $posProfit, 2);
+        $realProfit = round($grossProfit - $expensesTotal, 2);
+
         return [
-            'orders_count' => $this->ordersCount($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
-            'preparing_orders_count' => $this->preparingCount($restaurantId, $branchIds),
+            // ── Counts (orders only — POS exposed separately) ────────────────
+            'orders_count' => $includeOrders ? $this->ordersCount($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount) : 0,
+            'preparing_orders_count' => $includeOrders ? $this->preparingCount($restaurantId, $branchIds) : 0,
+            'pos_sales_count' => $includePos ? $this->posSalesCount($restaurantId, $from, $to, $branchIds) : 0,
+
+            // ── Plan limit (orders only — POS NEVER counts) ──────────────────
             'monthly_orders_count' => $limitService->orderCountInPeriod($restaurant),
-            'orders_limit' => $restaurant->orders_limit,
-            'net_profit' => $this->netProfit($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
-            'revenue' => $this->revenue($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
-            'revenue_by_payment' => $this->revenueByPayment($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
+            // `getEffectiveOrdersLimit()` respects billing mode: returns the
+            // plan's limit in subscription mode, the legacy field in manual.
+            // Reading `$restaurant->orders_limit` directly leaked stale manual
+            // values into the dashboard when a restaurant switched to trial.
+            'orders_limit' => $restaurant->getEffectiveOrdersLimit(),
+
+            // ── Unified revenue (orders.delivered + pos_sales.paid) ──────────
+            'revenue' => round($ordersRevenue + $posRevenue, 2),
+            'revenue_breakdown' => [
+                'orders' => round($ordersRevenue, 2),
+                'pos' => round($posRevenue, 2),
+            ],
+
+            // ── Profitability ────────────────────────────────────────────────
+            // net_profit    = ingresos − costo producción (snapshot)
+            // expenses      = suma de gastos operativos en el periodo
+            // real_profit   = net_profit − expenses (utilidad después de gastos)
+            'net_profit' => $grossProfit,
+            'expenses_total' => round($expensesTotal, 2),
+            'real_profit' => $realProfit,
+
+            // ── Unified payment-method breakdown ─────────────────────────────
+            'revenue_by_payment' => [
+                'cash' => round($byPayment['cash'] + $posByPayment['cash'], 2),
+                'terminal' => round($byPayment['terminal'] + $posByPayment['terminal'], 2),
+                'transfer' => round($byPayment['transfer'] + $posByPayment['transfer'], 2),
+            ],
+
+            // ── Per-branch order count (orders only — for chart compatibility)
             'orders_by_branch' => $this->ordersByBranch($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
-            'recent_orders' => $this->recentOrders($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount),
+
+            // ── Recent activity (orders + pos unified, with channel flag) ────
+            'recent_orders' => $this->recentActivity($restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount, $channel),
+
+            // ── Echo channel back to UI ──────────────────────────────────────
+            'channel' => $channel,
         ];
+    }
+
+    /**
+     * Sum of expenses in the period, filtered by branch if provided.
+     * Uses `expense_date` (not created_at) since expenses are dated by the
+     * user, not by row creation time.
+     */
+    private function expensesTotal(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds): float
+    {
+        return round((float) Expense::query()
+            ->where('restaurant_id', $restaurantId)
+            ->whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
+            ->when($branchIds !== null, fn (Builder $q) => $q->whereIn('branch_id', $branchIds))
+            ->sum('amount'), 2);
+    }
+
+    /** POS revenue grouped by payment method (sums each split). */
+    private function posRevenueByPayment(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds): array
+    {
+        $rows = DB::table('pos_payments as pp')
+            ->join('pos_sales as ps', 'pp.pos_sale_id', '=', 'ps.id')
+            ->where('ps.restaurant_id', $restaurantId)
+            ->where('ps.status', 'paid')
+            ->whereBetween('ps.created_at', [$from, $to])
+            ->when($branchIds !== null, fn ($q) => $q->whereIn('ps.branch_id', $branchIds))
+            ->selectRaw('pp.payment_method_type as type, COALESCE(SUM(pp.amount), 0) as total')
+            ->groupBy('pp.payment_method_type')
+            ->pluck('total', 'type');
+
+        return [
+            'cash' => round((float) ($rows['cash'] ?? 0), 2),
+            'terminal' => round((float) ($rows['terminal'] ?? 0), 2),
+            'transfer' => round((float) ($rows['transfer'] ?? 0), 2),
+        ];
+    }
+
+    /** POS net profit (paid sales) using snapshots in items + modifiers. */
+    private function posNetProfit(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds): float
+    {
+        $base = (float) DB::table('pos_sale_items as psi')
+            ->join('pos_sales as ps', 'psi.pos_sale_id', '=', 'ps.id')
+            ->where('ps.restaurant_id', $restaurantId)
+            ->where('ps.status', 'paid')
+            ->whereBetween('ps.created_at', [$from, $to])
+            ->when($branchIds !== null, fn ($q) => $q->whereIn('ps.branch_id', $branchIds))
+            ->selectRaw('COALESCE(SUM(psi.unit_price * psi.quantity) - SUM(psi.production_cost * psi.quantity), 0) as profit')
+            ->value('profit');
+
+        $modifiers = (float) DB::table('pos_sale_item_modifiers as psim')
+            ->join('pos_sale_items as psi', 'psim.pos_sale_item_id', '=', 'psi.id')
+            ->join('pos_sales as ps', 'psi.pos_sale_id', '=', 'ps.id')
+            ->where('ps.restaurant_id', $restaurantId)
+            ->where('ps.status', 'paid')
+            ->whereBetween('ps.created_at', [$from, $to])
+            ->when($branchIds !== null, fn ($q) => $q->whereIn('ps.branch_id', $branchIds))
+            ->selectRaw('COALESCE(SUM((psim.price_adjustment - psim.production_cost) * psi.quantity), 0) as profit')
+            ->value('profit');
+
+        return round($base + $modifiers, 2);
+    }
+
+    /**
+     * Recent activity: latest orders + POS sales merged, tagged with `channel`.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function recentActivity(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds, ?array $statuses, ?float $minAmount, ?float $maxAmount, ?string $channel = null): Collection
+    {
+        $orders = collect();
+        if ($channel !== 'pos') {
+            $orders = $this->applyFilters(Order::query(), $restaurantId, $from, $to, $branchIds, $statuses, $minAmount, $maxAmount)
+                ->with(['customer:id,name', 'branch:id,name'])
+                ->latest()
+                ->limit(20)
+                ->get(['id', 'customer_id', 'branch_id', 'delivery_type', 'status', 'subtotal', 'delivery_cost', 'total', 'created_at'])
+                ->map(fn ($o) => [
+                    'channel' => 'orders',
+                    'id' => $o->id,
+                    'reference' => '#'.str_pad((string) $o->id, 4, '0', STR_PAD_LEFT),
+                    'who' => $o->customer?->name,
+                    'branch' => $o->branch ? ['id' => $o->branch->id, 'name' => $o->branch->name] : null,
+                    'status' => $o->status,
+                    'total' => $o->total,
+                    'created_at' => $o->created_at->toIso8601String(),
+                ]);
+        }
+
+        $pos = collect();
+        if ($channel !== 'orders') {
+            $pos = PosSale::query()
+                ->with(['cashier:id,name', 'branch:id,name'])
+                ->where('restaurant_id', $restaurantId)
+                ->whereBetween('created_at', [$from, $to])
+                ->when($branchIds !== null, fn (Builder $q) => $q->whereIn('branch_id', $branchIds))
+                ->latest()
+                ->limit(20)
+                ->get(['id', 'cashier_user_id', 'branch_id', 'ticket_number', 'status', 'subtotal', 'total', 'created_at'])
+                ->map(fn ($s) => [
+                    'channel' => 'pos',
+                    'id' => $s->id,
+                    'reference' => $s->ticket_number,
+                    'who' => $s->cashier?->name,
+                    'branch' => $s->branch ? ['id' => $s->branch->id, 'name' => $s->branch->name] : null,
+                    'status' => $s->status,
+                    'total' => $s->total,
+                    'created_at' => $s->created_at->toIso8601String(),
+                ]);
+        }
+
+        return $orders->concat($pos)->sortByDesc('created_at')->take(20)->values();
+    }
+
+    /** Count of paid POS sales in the date range (filtered by branches if provided). */
+    private function posSalesCount(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds): int
+    {
+        return PosSale::query()
+            ->where('restaurant_id', $restaurantId)
+            ->where('status', 'paid')
+            ->whereBetween('created_at', [$from, $to])
+            ->when($branchIds !== null, fn (Builder $q) => $q->whereIn('branch_id', $branchIds))
+            ->count();
+    }
+
+    /** Sum of `total` of paid POS sales in the date range. */
+    private function posRevenue(int $restaurantId, Carbon $from, Carbon $to, ?array $branchIds): float
+    {
+        return round((float) PosSale::query()
+            ->where('restaurant_id', $restaurantId)
+            ->where('status', 'paid')
+            ->whereBetween('created_at', [$from, $to])
+            ->when($branchIds !== null, fn (Builder $q) => $q->whereIn('branch_id', $branchIds))
+            ->sum('total'), 2);
     }
 
     /**

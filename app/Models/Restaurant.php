@@ -142,6 +142,10 @@ class Restaurant extends Model
 
     public function transitionToSubscription(): void
     {
+        // Legacy `orders_limit` / `orders_limit_start/end` columns are NOT
+        // cleared here (DB constraint is NOT NULL). They remain as orphan
+        // data — all readers should use `getEffectiveOrdersLimit()` which
+        // prefers the plan's value in subscription mode.
         $this->update([
             'billing_mode' => 'subscription',
         ]);
@@ -199,6 +203,54 @@ class Restaurant extends Model
     }
 
     /**
+     * Can this restaurant create NEW orders or POS sales right now?
+     *
+     * True when the status is operational AND the billing period is current.
+     * Does NOT consider `orders_limit` — the limit is an order-only gate
+     * enforced separately by LimitService, because POS sales do not consume
+     * the order quota.
+     *
+     * Used by internal channels (manual order from admin, POS new sale).
+     * The public SPA uses the more permissive `canReceiveOrders()`.
+     */
+    public function canOperate(\App\Services\LimitService $limits): bool
+    {
+        return $this->operationalBlockReason($limits) === null;
+    }
+
+    /**
+     * @return null|'disabled'|'suspended'|'incomplete'|'past_due'|'period_expired'|'period_not_started'
+     */
+    public function operationalBlockReason(\App\Services\LimitService $limits): ?string
+    {
+        if ($this->status === 'disabled') {
+            return 'disabled';
+        }
+        if ($this->status === 'suspended') {
+            return 'suspended';
+        }
+        if ($this->status === 'incomplete') {
+            return 'incomplete';
+        }
+        if ($this->status === 'past_due') {
+            return 'past_due';
+        }
+
+        // Canceled within subscription_ends_at is considered operational —
+        // canReceiveOrders() and the cron check-canceled handle the expiry.
+
+        // Manual mode period boundaries. LimitService::limitReason() is also
+        // used here but we only care about period checks — `limit_reached`
+        // is NOT an operational block (POS stays open even at limit).
+        $reason = $limits->limitReason($this);
+        if ($reason === 'period_expired' || $reason === 'period_not_started') {
+            return $reason;
+        }
+
+        return null;
+    }
+
+    /**
      * Assign a plan and sync legacy limit fields for backward compatibility.
      */
     public function assignPlan(Plan $plan): void
@@ -217,8 +269,7 @@ class Restaurant extends Model
                 return $this->plan->orders_limit;
             }
 
-            // Subscription mode without plan — fallback to legacy fields to avoid hard block
-            \Illuminate\Support\Facades\Log::error("Restaurant {$this->id} in subscription mode without plan_id — using legacy orders_limit as fallback");
+            $this->logSubscriptionWithoutPlan('orders_limit', $this->orders_limit ?? 0);
 
             return $this->orders_limit ?? 0;
         }
@@ -233,7 +284,7 @@ class Restaurant extends Model
                 return $this->plan->max_branches;
             }
 
-            \Illuminate\Support\Facades\Log::error("Restaurant {$this->id} in subscription mode without plan_id — using legacy max_branches as fallback");
+            $this->logSubscriptionWithoutPlan('max_branches', $this->max_branches ?? 1);
 
             return $this->max_branches ?? 1;
         }
@@ -241,9 +292,70 @@ class Restaurant extends Model
         return $this->max_branches ?? 1;
     }
 
+    /**
+     * Record the "subscription mode without plan_id" anomaly — both to the
+     * app log (for alerts) and to billing_audits (so a SuperAdmin can see
+     * it in the restaurant detail page without trawling log files).
+     *
+     * Guards against per-request spam via a static cache keyed by id+field:
+     * multiple calls to getEffectiveOrdersLimit()/getEffectiveMaxBranches()
+     * in a single request produce exactly one audit entry.
+     */
+    private function logSubscriptionWithoutPlan(string $field, int $fallbackValue): void
+    {
+        $context = [
+            'restaurant_id' => $this->id,
+            'restaurant_name' => $this->name,
+            'status' => $this->status,
+            'field' => $field,
+            'fallback_value' => $fallbackValue,
+            'stripe_customer_id' => $this->stripe_id,
+        ];
+
+        \Illuminate\Support\Facades\Log::error(
+            "Restaurant {$this->id} in subscription mode without plan_id — using legacy {$field} as fallback",
+            $context
+        );
+
+        static $audited = [];
+        $key = $this->id.':'.$field;
+        if (isset($audited[$key])) {
+            return;
+        }
+        $audited[$key] = true;
+
+        try {
+            BillingAudit::log(
+                action: 'subscription_without_plan_fallback',
+                restaurantId: $this->id,
+                actorType: 'system',
+                payload: $context,
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Failed to write billing_audit for plan fallback', [
+                'restaurant_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    /**
+     * Invariant helper: returns true if this restaurant has at least one
+     * admin user OTHER than the given user. Use this as a guardrail on any
+     * endpoint that could delete or demote an admin to prevent leaving the
+     * restaurant without any administrator.
+     */
+    public function hasAnotherAdmin(User $excluding): bool
+    {
+        return $this->users()
+            ->where('role', 'admin')
+            ->where('id', '!=', $excluding->id)
+            ->exists();
     }
 
     public function branches(): HasMany

@@ -232,11 +232,16 @@ class CancellationTest extends TestCase
         $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index'));
 
         $response->assertInertia(fn ($page) => $page
-            ->has('cancelled_orders', 1)
-            ->has('cancelled_orders.0.customer')
-            ->has('cancelled_orders.0.branch')
-            ->has('cancelled_orders.0.cancellation_reason')
-            ->has('cancelled_orders.0.cancelled_at')
+            ->has('cancelled_orders.data', 1)
+            ->where('cancelled_orders.data.0.channel', 'orders')
+            ->has('cancelled_orders.data.0.reference')
+            ->has('cancelled_orders.data.0.who')
+            ->has('cancelled_orders.data.0.branch')
+            ->has('cancelled_orders.data.0.cancellation_reason')
+            ->has('cancelled_orders.data.0.cancelled_at')
+            ->has('cancelled_orders.current_page')
+            ->has('cancelled_orders.last_page')
+            ->has('cancelled_orders.total')
         );
     }
 
@@ -256,7 +261,261 @@ class CancellationTest extends TestCase
             ->where('cancellation_rate', 0)
             ->where('top_reason', null)
             ->has('reasons_breakdown', 0)
-            ->has('cancelled_orders', 0)
+            ->has('cancelled_orders.data', 0)
+            ->where('cancelled_orders.total', 0)
         );
+    }
+
+    // ─── Pagination & scalability ────────────────────────────────────────────────
+
+    public function test_cancellations_list_is_paginated(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        for ($i = 0; $i < 30; $i++) {
+            $this->createOrder($restaurant->id, overrides: [
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        // Default per_page is now 20 (was 25 before the paginator refactor).
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->has('cancelled_orders.data', 20)
+            ->where('cancelled_orders.current_page', 1)
+            ->where('cancelled_orders.total', 30)
+            ->where('cancelled_orders.last_page', 2)
+            ->where('cancelled_orders.per_page', 20)
+        );
+    }
+
+    public function test_cancellations_page_2_returns_remaining_rows(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        for ($i = 0; $i < 30; $i++) {
+            $this->createOrder($restaurant->id, overrides: [
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        // With per_page=20 and 30 rows, page 2 carries the remaining 10.
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['page' => 2]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->has('cancelled_orders.data', 10)
+            ->where('cancelled_orders.current_page', 2)
+        );
+    }
+
+    public function test_cancellations_respects_per_page_param(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        for ($i = 0; $i < 30; $i++) {
+            $this->createOrder($restaurant->id, overrides: [
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['per_page' => 50]))
+            ->assertInertia(fn ($page) => $page
+                ->has('cancelled_orders.data', 30)
+                ->where('cancelled_orders.per_page', 50)
+                ->where('cancelled_orders.last_page', 1)
+            );
+    }
+
+    public function test_cancellations_rejects_invalid_per_page(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        // 37 is not in {20,50,100}; controller should reject.
+        $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['per_page' => 37]))
+            ->assertStatus(302);
+    }
+
+    public function test_cancellations_sort_by_total_desc(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        foreach ([150, 900, 50, 400] as $i => $t) {
+            $this->createOrder($restaurant->id, overrides: [
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'total' => $t,
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', [
+            'sort_by' => 'total', 'sort_direction' => 'desc',
+        ]));
+        $data = $response->viewData('page')['props']['cancelled_orders']['data'];
+        $totals = array_map(fn ($r) => (float) $r['total'], $data);
+
+        $this->assertEquals([900.0, 400.0, 150.0, 50.0], $totals);
+        $this->assertEquals('total', $response->viewData('page')['props']['filters']['sort_by']);
+    }
+
+    public function test_cancellations_sort_by_total_asc_across_orders_and_pos(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $branch = \App\Models\Branch::factory()->create(['restaurant_id' => $restaurant->id]);
+
+        // Mix orders + POS cancellations so we verify the merged sort
+        // honors totals from both channels.
+        $this->createOrder($restaurant->id, overrides: [
+            'status' => 'cancelled', 'cancellation_reason' => 'x', 'total' => 250,
+            'cancelled_at' => now()->subMinutes(1),
+        ]);
+        \App\Models\PosSale::factory()->create([
+            'restaurant_id' => $restaurant->id, 'branch_id' => $branch->id,
+            'cashier_user_id' => $user->id, 'status' => 'cancelled', 'total' => 100,
+            'cancelled_at' => now()->subMinutes(2),
+        ]);
+        $this->createOrder($restaurant->id, overrides: [
+            'status' => 'cancelled', 'cancellation_reason' => 'y', 'total' => 75,
+            'cancelled_at' => now()->subMinutes(3),
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', [
+            'sort_by' => 'total', 'sort_direction' => 'asc',
+        ]));
+        $totals = array_map(
+            fn ($r) => (float) $r['total'],
+            $response->viewData('page')['props']['cancelled_orders']['data']
+        );
+
+        $this->assertEquals([75.0, 100.0, 250.0], $totals);
+    }
+
+    public function test_cancellations_sort_is_stable_across_pages_for_identical_totals(): void
+    {
+        // Six cancellations with the same total; paginating with per_page=3
+        // must split them into 2 disjoint pages — no duplicates or skips.
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $ids = [];
+        for ($i = 0; $i < 6; $i++) {
+            $ids[] = $this->createOrder($restaurant->id, overrides: [
+                'status' => 'cancelled', 'cancellation_reason' => 'same',
+                'total' => 500,
+                'cancelled_at' => now()->subMinutes($i),
+            ])->id;
+        }
+
+        $page1 = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', [
+            'sort_by' => 'total', 'sort_direction' => 'desc', 'per_page' => 20, 'page' => 1,
+        ]))->viewData('page')['props']['cancelled_orders']['data'];
+
+        $returnedIds = array_map(fn ($r) => (int) $r['id'], $page1);
+        // Tie-breaker is id DESC, so with identical totals we expect the ids
+        // in descending order.
+        $expected = collect($ids)->sortDesc()->values()->all();
+        $this->assertEquals($expected, $returnedIds);
+    }
+
+    public function test_cancellations_rejects_invalid_sort_by(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $this->withoutVite()->actingAs($user)
+            ->get(route('cancellations.index', ['sort_by' => 'branch_id']))
+            ->assertStatus(302);
+    }
+
+    public function test_cancellations_list_merges_orders_and_pos_without_duplicates(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $branch = \App\Models\Branch::factory()->create(['restaurant_id' => $restaurant->id]);
+
+        // 15 cancelled orders + 15 cancelled POS sales → 30 merged.
+        for ($i = 0; $i < 15; $i++) {
+            $this->createOrder($restaurant->id, $branch->id, [
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+            \App\Models\PosSale::factory()->create([
+                'restaurant_id' => $restaurant->id,
+                'branch_id' => $branch->id,
+                'cashier_user_id' => $user->id,
+                'status' => 'cancelled',
+                'cancellation_reason' => 'Motivo',
+                'cancelled_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        $page1 = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['page' => 1]));
+        $page2 = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['page' => 2]));
+
+        $page1->assertInertia(fn ($p) => $p->where('cancelled_orders.total', 30));
+
+        $data1 = $page1->viewData('page')['props']['cancelled_orders']['data'];
+        $data2 = $page2->viewData('page')['props']['cancelled_orders']['data'];
+
+        $keys1 = collect($data1)->map(fn ($r) => $r['channel'].'-'.$r['id'])->all();
+        $keys2 = collect($data2)->map(fn ($r) => $r['channel'].'-'.$r['id'])->all();
+
+        $this->assertEmpty(array_intersect($keys1, $keys2), 'Page 1 and page 2 must not share rows');
+        $this->assertCount(30, array_merge($keys1, $keys2));
+    }
+
+    public function test_by_branch_respects_branch_filter(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+
+        $branchA = \App\Models\Branch::factory()->create(['restaurant_id' => $restaurant->id, 'name' => 'A']);
+        $branchB = \App\Models\Branch::factory()->create(['restaurant_id' => $restaurant->id, 'name' => 'B']);
+
+        $this->createOrder($restaurant->id, $branchA->id, ['status' => 'cancelled', 'cancellation_reason' => 'X', 'cancelled_at' => now()]);
+        $this->createOrder($restaurant->id, $branchB->id, ['status' => 'cancelled', 'cancellation_reason' => 'X', 'cancelled_at' => now()]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', [
+            'branch_id' => $branchA->id,
+        ]));
+
+        // by_branch must only include the filtered branch (was showing both).
+        $response->assertInertia(fn ($page) => $page
+            ->has('by_branch', 1)
+            ->where('by_branch.0.id', $branchA->id)
+            ->where('by_branch.0.count', 1)
+        );
+    }
+
+    public function test_by_branch_aggregates_orders_and_pos(): void
+    {
+        [$user, $restaurant] = $this->createAdminWithRestaurant();
+        $branchA = \App\Models\Branch::factory()->create(['restaurant_id' => $restaurant->id, 'name' => 'A']);
+
+        $this->createOrder($restaurant->id, $branchA->id, ['status' => 'cancelled', 'cancellation_reason' => 'X', 'cancelled_at' => now()]);
+        \App\Models\PosSale::factory()->create([
+            'restaurant_id' => $restaurant->id, 'branch_id' => $branchA->id, 'cashier_user_id' => $user->id,
+            'status' => 'cancelled', 'cancellation_reason' => 'X', 'cancelled_at' => now(),
+        ]);
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('by_branch.0.name', 'A')
+            ->where('by_branch.0.count', 2) // 1 order + 1 POS
+        );
+    }
+
+    public function test_invalid_from_date_returns_validation_error(): void
+    {
+        [$user] = $this->createAdminWithRestaurant();
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('cancellations.index', ['from' => 'not-a-date']));
+
+        $response->assertSessionHasErrors('from');
     }
 }

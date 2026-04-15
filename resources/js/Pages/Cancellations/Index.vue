@@ -3,6 +3,8 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import DatePicker from '@/Components/DatePicker.vue'
+import Pagination from '@/Components/Pagination.vue'
+import SortableHeader from '@/Components/SortableHeader.vue'
 
 const props = defineProps({
     cancelled_count: Number,
@@ -12,22 +14,61 @@ const props = defineProps({
     reasons_breakdown: Array,
     by_branch: Array,
     by_day: Array,
-    cancelled_orders: Array,
+    cancelled_orders: Object, // LengthAwarePaginator
     branches: Array,
     filters: Object,
+    by_channel: { type: Object, default: () => ({ orders: 0, pos: 0 }) },
 })
 
 const from = ref(props.filters.from)
 const to = ref(props.filters.to)
 const branchId = ref(props.filters.branch_id ?? '')
+const perPage = ref(Number(props.filters.per_page ?? 20))
+const sortBy = ref(props.filters.sort_by ?? null)
+const sortDir = ref(props.filters.sort_direction ?? null)
 
-function applyFilter() {
+function navigate(params = {}, opts = {}) {
     router.get(route('cancellations.index'), {
         from: from.value,
         to: to.value,
         branch_id: branchId.value || undefined,
-    }, { preserveState: true, preserveScroll: true })
+        per_page: perPage.value || undefined,
+        sort_by: sortBy.value || undefined,
+        sort_direction: sortBy.value ? (sortDir.value || 'desc') : undefined,
+        ...params,
+    }, { preserveState: true, preserveScroll: true, replace: true, ...opts })
 }
+
+function handleSort(column) {
+    if (sortBy.value !== column) {
+        sortBy.value = column
+        sortDir.value = 'asc'
+    } else if (sortDir.value === 'asc') {
+        sortDir.value = 'desc'
+    } else {
+        sortBy.value = null
+        sortDir.value = null
+    }
+    navigate({ page: 1 })
+}
+
+function applyFilter() {
+    // Reset to page 1 whenever filters change — otherwise a user on page 4
+    // of a wide range and who narrows to today would see an empty result.
+    navigate({ page: 1 })
+}
+
+function goToPage(page) {
+    if (!page || page === props.cancelled_orders?.current_page) { return }
+    navigate({ page })
+}
+
+function onPerPageChange(value) {
+    perPage.value = value
+    navigate({ page: 1 })
+}
+
+const rows = computed(() => props.cancelled_orders?.data ?? [])
 
 function localDateStr(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -177,9 +218,9 @@ function rateColor(rate) {
                         <span class="material-symbols-outlined text-red-600">cancel</span>
                     </div>
                 </div>
-                <p class="text-sm font-medium text-gray-500 mb-1">Pedidos cancelados</p>
+                <p class="text-sm font-medium text-gray-500 mb-1">Cancelaciones</p>
                 <h3 class="text-3xl font-bold text-gray-900">{{ cancelled_count }}</h3>
-                <p class="text-xs text-gray-400 mt-1">de {{ total_orders_count }} pedidos totales</p>
+                <p class="text-xs text-gray-400 mt-1">de {{ total_orders_count }} totales · {{ by_channel.orders }} online · {{ by_channel.pos }} POS</p>
             </div>
 
             <!-- Tasa de cancelacion -->
@@ -284,45 +325,83 @@ function rateColor(rate) {
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedido</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cancelado</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Referencia</th>
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Canal</th>
+                            <SortableHeader
+                                column-key="cancelled_at"
+                                label="Cancelado"
+                                :active-key="sortBy"
+                                :direction="sortDir"
+                                align="left"
+                                @sort="handleSort"
+                            />
+                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente / Cajero</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sucursal</th>
-                            <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</th>
+                            <SortableHeader
+                                column-key="total"
+                                label="Total"
+                                :active-key="sortBy"
+                                :direction="sortDir"
+                                align="right"
+                                @sort="handleSort"
+                            />
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Motivo</th>
                             <th class="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         <tr
-                            v-for="order in cancelled_orders"
-                            :key="order.id"
+                            v-for="row in rows"
+                            :key="row.channel + '-' + row.id"
                             class="hover:bg-gray-50/50 transition-colors"
                         >
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ orderNumber(order.id) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ formatDateTime(order.cancelled_at) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-700">{{ order.customer?.name ?? '&mdash;' }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-600">{{ order.branch?.name ?? '&mdash;' }}</td>
-                            <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{{ formatPrice(order.total) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" :title="order.cancellation_reason">{{ order.cancellation_reason ?? '&mdash;' }}</td>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ row.reference }}</td>
+                            <td class="px-6 py-4">
+                                <span
+                                    class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border"
+                                    :class="row.channel === 'pos'
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'"
+                                >
+                                    <span class="material-symbols-outlined text-sm">{{ row.channel === 'pos' ? 'point_of_sale' : 'receipt_long' }}</span>
+                                    {{ row.channel === 'pos' ? 'POS' : 'Online' }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ formatDateTime(row.cancelled_at) }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-700">
+                                <p>{{ row.who ?? '&mdash;' }}</p>
+                                <p v-if="row.who_extra" class="text-xs text-gray-400">{{ row.who_extra }}</p>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">{{ row.branch?.name ?? '&mdash;' }}</td>
+                            <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{{ formatPrice(row.total) }}</td>
+                            <td class="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" :title="row.cancellation_reason">{{ row.cancellation_reason ?? '&mdash;' }}</td>
                             <td class="px-6 py-4 text-right">
                                 <Link
-                                    :href="route('orders.show', order.id)"
+                                    :href="row.channel === 'pos' ? route('pos.sales.show', row.id) : route('orders.show', row.id)"
                                     class="text-gray-400 hover:text-[#FF5722] transition-colors"
                                 >
                                     <span class="material-symbols-outlined">open_in_new</span>
                                 </Link>
                             </td>
                         </tr>
-                        <tr v-if="!cancelled_orders.length">
-                            <td colspan="7" class="px-6 py-12 text-center text-sm text-gray-400">
-                                No hay pedidos cancelados en este periodo.
+                        <tr v-if="!rows.length">
+                            <td colspan="8" class="px-6 py-12 text-center text-sm text-gray-400">
+                                No hay cancelaciones en este periodo.
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            <Pagination
+                :paginator="cancelled_orders"
+                label="cancelaciones"
+                @page="goToPage"
+                @per-page="onPerPageChange"
+            />
         </div>
+        <p class="mt-2 text-[11px] text-gray-400">
+            Los KPIs y gráficas de arriba resumen todo el periodo filtrado. La tabla muestra solo la página actual.
+        </p>
 
     </AppLayout>
 </template>

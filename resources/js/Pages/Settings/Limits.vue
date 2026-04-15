@@ -73,7 +73,7 @@ function alertClass(percent) {
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-gray-500">receipt_long</span>
-                                <span class="text-sm font-semibold text-gray-700">Pedidos del periodo</span>
+                                <span class="text-sm font-semibold text-gray-700">Pedidos del plan</span>
                             </div>
                             <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ orders_limit }}</span>
                         </div>
@@ -85,6 +85,13 @@ function alertClass(percent) {
                             ></div>
                         </div>
                         <p class="text-xs text-gray-400 mt-1">Periodo: {{ formatDate(orders_limit_start) }} — {{ formatDate(orders_limit_end) }}</p>
+                        <div class="mt-3 px-3 py-2 rounded-lg bg-blue-50/50 border border-blue-100 flex items-start gap-2">
+                            <span class="material-symbols-outlined text-blue-600 text-sm mt-0.5">info</span>
+                            <p class="text-xs text-blue-800 leading-snug">
+                                Este conteo considera <span class="font-semibold">solo los pedidos creados desde la app externa / menú digital</span>.
+                                Las ventas generadas en el POS del restaurante <span class="font-semibold">son ilimitadas</span> y no cuentan al plan.
+                            </p>
+                        </div>
                         <div
                             v-if="alertClass(ordersPercent)"
                             class="mt-3 px-4 py-3 rounded-xl border text-sm font-medium"

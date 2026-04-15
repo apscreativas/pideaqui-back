@@ -31,8 +31,15 @@ class OrderService
      *
      * @throws ValidationException|\DomainException
      */
-    public function store(array $validated, Restaurant $restaurant): OrderCreatedResult
+    public function store(array $validated, Restaurant $restaurant, string $source = 'api', ?int $userId = null): OrderCreatedResult
     {
+        // PASO 0 — Operational gate for internal channels (manual orders from admin).
+        // Public API (`source === 'api'`) is gated upstream by AuthenticateRestaurantToken
+        // via canReceiveOrders(), which is more permissive (allows canceled+future).
+        if ($source !== 'api' && ! $restaurant->canOperate($this->limitService)) {
+            throw new \DomainException('restaurant_not_operational:'.$restaurant->operationalBlockReason($this->limitService));
+        }
+
         // PASO 1 — Order limit check (outside transaction for fast fail, re-checked inside).
         if ($this->limitService->isOrderLimitReached($restaurant)) {
             throw new \DomainException('monthly_limit_reached');
@@ -99,11 +106,31 @@ class OrderService
             throw ValidationException::withMessages(['payment_method' => ['Este método de pago no está disponible.']]);
         }
 
-        // PASO 2 — Find or create customer, always update name/phone.
-        $customer = Customer::updateOrCreate(
-            ['token' => $validated['customer']['token']],
-            ['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']],
-        );
+        // PASO 2 — Find or create customer.
+        // API: keyed by client-supplied token (cookie-based dedup).
+        // Manual (admin): no token available, look up an existing customer who has placed
+        // an order at this restaurant matching the phone; otherwise create with a synthetic token.
+        if ($source === 'manual') {
+            $customer = Customer::query()
+                ->where('phone', $validated['customer']['phone'])
+                ->whereHas('orders', fn ($q) => $q->where('restaurant_id', $restaurant->id))
+                ->first();
+
+            if ($customer) {
+                $customer->update(['name' => $validated['customer']['name']]);
+            } else {
+                $customer = Customer::create([
+                    'token' => 'manual_'.sha1($restaurant->id.':'.$validated['customer']['phone'].':'.uniqid('', true)),
+                    'name' => $validated['customer']['name'],
+                    'phone' => $validated['customer']['phone'],
+                ]);
+            }
+        } else {
+            $customer = Customer::updateOrCreate(
+                ['token' => $validated['customer']['token']],
+                ['name' => $validated['customer']['name'], 'phone' => $validated['customer']['phone']],
+            );
+        }
 
         // PASO 3 — Determine branch.
         // Delivery: backend calculates optimal branch (ignore client-supplied branch_id).
@@ -439,7 +466,7 @@ class OrderService
         }
 
         // PASO 8 — Create Order inside transaction with limit re-check (prevents TOCTOU race condition).
-        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $normalizedItems, $allValidOptions, $subtotal, $deliveryCost, $discountAmount, $distanceKm, $total, $coupon): Order {
+        $order = DB::transaction(function () use ($validated, $restaurant, $branch, $customer, $normalizedItems, $allValidOptions, $subtotal, $deliveryCost, $discountAmount, $distanceKm, $total, $coupon, $source, $userId): Order {
             // Re-check order limit with a FOR UPDATE lock on the restaurant row.
             $lockedRestaurant = Restaurant::query()->lockForUpdate()->find($restaurant->id);
             if ($this->limitService->isOrderLimitReached($lockedRestaurant)) {
@@ -487,6 +514,7 @@ class OrderService
                 'coupon_code' => $coupon?->code,
                 'delivery_type' => $validated['delivery_type'],
                 'status' => 'received',
+                'source' => $source,
                 'scheduled_at' => $validated['scheduled_at'] ?? null,
                 'subtotal' => $subtotal,
                 'delivery_cost' => $deliveryCost,
@@ -536,21 +564,29 @@ class OrderService
                 }
             }
 
-            // Audit trail: order created (no user_id — created by client via API).
+            // Audit trail: order created.
+            // user_id is null when created from the API; set to admin user when created manually.
             OrderEvent::create([
                 'order_id' => $order->id,
-                'user_id' => null,
+                'user_id' => $userId,
                 'action' => 'created',
                 'from_status' => null,
                 'to_status' => 'received',
             ]);
 
             // Record coupon usage with locked re-validation (prevents concurrent double-use).
+            // Authoritative check: Coupon row is locked AND the uses count query
+            // is executed with lockForUpdate via `lockUses: true`. Together these
+            // serialize all concurrent insertions of CouponUse for this coupon.
             if ($coupon) {
                 $lockedCoupon = Coupon::query()->lockForUpdate()->find($coupon->id);
 
                 if ($lockedCoupon) {
-                    $recheck = $lockedCoupon->isValidForOrder($subtotal, $validated['customer']['phone']);
+                    $recheck = $lockedCoupon->isValidForOrder(
+                        $subtotal,
+                        $validated['customer']['phone'],
+                        lockUses: true,
+                    );
                     if (! $recheck['valid']) {
                         throw ValidationException::withMessages(['coupon_code' => [$recheck['reason']]]);
                     }

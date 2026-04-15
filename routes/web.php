@@ -10,12 +10,15 @@ use App\Http\Controllers\CouponController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryMethodController;
 use App\Http\Controllers\DeliveryRangeController;
+use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\LimitsController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\ModifierCatalogController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentMethodController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionController;
@@ -59,6 +62,9 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
     // Pedidos — ambos roles (controller filtra por branch para operators)
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/new-count', [OrderController::class, 'newCount'])->name('orders.new-count');
+    Route::get('/orders/create', [OrderController::class, 'create'])->name('orders.create');
+    Route::post('/orders/preview-delivery', [OrderController::class, 'previewDelivery'])->middleware('throttle:60,1')->name('orders.preview-delivery');
+    Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('orders.store');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::get('/orders/{order}/edit', [OrderController::class, 'edit'])->name('orders.edit');
     Route::put('/orders/{order}', [OrderController::class, 'update'])->name('orders.update');
@@ -69,6 +75,15 @@ Route::middleware(['auth', 'tenant'])->group(function (): void {
 
     // Mapa — ambos roles
     Route::get('/map', [MapController::class, 'index'])->name('map.index');
+
+    // ─── POS — historial + venta vía modal (admin + operator) ────────────────
+    Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+    Route::get('/pos/sales/{sale}', [PosController::class, 'salesShow'])->name('pos.sales.show');
+    Route::post('/pos/sales', [PosController::class, 'store'])->middleware('throttle:60,1')->name('pos.sales.store');
+    Route::put('/pos/sales/{sale}/cancel', [PosController::class, 'cancel'])->name('pos.sales.cancel');
+    Route::put('/pos/sales/{sale}/pay', [PosController::class, 'closePay'])->name('pos.sales.pay');
+    Route::post('/pos/sales/{sale}/payments', [PosController::class, 'storePayment'])->name('pos.sales.payments.store');
+    Route::delete('/pos/sales/{sale}/payments/{payment}', [PosController::class, 'destroyPayment'])->name('pos.sales.payments.destroy');
 
     // Perfil — ambos roles (cada usuario edita su propio perfil)
     Route::get('/settings/profile', [ProfileController::class, 'edit'])->name('settings.profile');
@@ -149,6 +164,27 @@ Route::middleware(['auth', 'tenant', 'role:admin'])->group(function (): void {
     Route::delete('/modifier-catalog/{modifierGroupTemplate}', [ModifierCatalogController::class, 'destroy'])->name('modifier-catalog.destroy');
     Route::patch('/modifier-catalog/{modifierGroupTemplate}/toggle', [ModifierCatalogController::class, 'toggle'])->name('modifier-catalog.toggle');
     Route::patch('/modifier-catalog/reorder', [ModifierCatalogController::class, 'reorder'])->name('modifier-catalog.reorder');
+
+    // ─── Gastos (admin only) ────────────────────────────────────────────────
+    Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
+    Route::get('/expenses/create', [ExpenseController::class, 'create'])->name('expenses.create');
+    Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+    Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])->name('expenses.show');
+    Route::get('/expenses/{expense}/edit', [ExpenseController::class, 'edit'])->name('expenses.edit');
+    Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
+    Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+    Route::delete('/expenses/attachments/{attachment}', [ExpenseController::class, 'destroyAttachment'])->name('expenses.attachments.destroy');
+
+    // Categorías y subcategorías de gastos
+    Route::get('/settings/expense-categories', [ExpenseCategoryController::class, 'index'])->name('expense-categories.index');
+    Route::post('/settings/expense-categories', [ExpenseCategoryController::class, 'store'])->name('expense-categories.store');
+    Route::put('/settings/expense-categories/{category}', [ExpenseCategoryController::class, 'update'])->name('expense-categories.update');
+    Route::patch('/settings/expense-categories/{category}/toggle', [ExpenseCategoryController::class, 'toggle'])->name('expense-categories.toggle');
+    Route::delete('/settings/expense-categories/{category}', [ExpenseCategoryController::class, 'destroy'])->name('expense-categories.destroy');
+    Route::post('/settings/expense-categories/{category}/subcategories', [ExpenseCategoryController::class, 'storeSubcategory'])->name('expense-subcategories.store');
+    Route::put('/settings/expense-subcategories/{subcategory}', [ExpenseCategoryController::class, 'updateSubcategory'])->name('expense-subcategories.update');
+    Route::patch('/settings/expense-subcategories/{subcategory}/toggle', [ExpenseCategoryController::class, 'toggleSubcategory'])->name('expense-subcategories.toggle');
+    Route::delete('/settings/expense-subcategories/{subcategory}', [ExpenseCategoryController::class, 'destroySubcategory'])->name('expense-subcategories.destroy');
 
     // Cupones
     Route::get('/coupons', [CouponController::class, 'index'])->name('coupons.index');

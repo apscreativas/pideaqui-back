@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Services\LimitService;
+use App\Support\BillingMessages;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -58,6 +60,9 @@ class HandleInertiaRequests extends Middleware
             return null;
         }
 
+        $limits = app(LimitService::class);
+        $blockReason = $restaurant->operationalBlockReason($limits);
+
         return [
             'status' => $restaurant->status ?? 'active',
             'billing_mode' => $restaurant->billing_mode ?? 'manual',
@@ -65,6 +70,9 @@ class HandleInertiaRequests extends Middleware
             'grace_period_ends_at' => $restaurant->grace_period_ends_at?->toIso8601String(),
             'subscription_ends_at' => $restaurant->subscription_ends_at?->toIso8601String(),
             'must_show_billing' => $restaurant->mustShowBilling(),
+            'can_operate' => $blockReason === null,
+            'block_reason' => $blockReason,
+            'block_message' => BillingMessages::operational($restaurant, $blockReason),
         ];
     }
 }

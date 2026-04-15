@@ -407,7 +407,7 @@ class CouponTest extends TestCase
 
         $response->assertOk()->assertJson([
             'valid' => false,
-            'reason' => 'Cupón no encontrado.',
+            'reason' => 'Cupón no válido o no vigente.',
         ]);
     }
 
@@ -437,7 +437,10 @@ class CouponTest extends TestCase
             'customer_phone' => '5551234567',
         ], $this->apiHeaders($restaurant1));
 
-        $response->assertOk()->assertJson(['valid' => false, 'reason' => 'Cupón no encontrado.']);
+        // Anti-enumeration: the public validate endpoint collapses "not found"
+        // and lifecycle failures (inactive/expired/exhausted) into a single
+        // generic message so an attacker cannot tell which codes exist.
+        $response->assertOk()->assertJson(['valid' => false, 'reason' => 'Cupón no válido o no vigente.']);
     }
 
     // ─── Order Creation with Coupon ──────────────────────────────────────────

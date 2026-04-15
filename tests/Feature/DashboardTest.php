@@ -164,8 +164,8 @@ class DashboardTest extends TestCase
         $response = $this->withoutVite()->actingAs($user)->get(route('dashboard'));
 
         $response->assertInertia(fn ($page) => $page
-            ->has('recent_orders.0.subtotal')
-            ->has('recent_orders.0.delivery_cost')
+            ->where('recent_orders.0.channel', 'orders')
+            ->has('recent_orders.0.reference')
             ->has('recent_orders.0.total')
             ->has('recent_orders.0.created_at')
         );
@@ -176,6 +176,49 @@ class DashboardTest extends TestCase
         $response = $this->get(route('dashboard'));
 
         $response->assertRedirect(route('login'));
+    }
+
+    // ─── Role-based metric exposure ──────────────────────────────────────────
+
+    public function test_admin_sees_profit_and_cash_metrics(): void
+    {
+        [$user] = $this->createAdminWithRestaurant();
+
+        $response = $this->withoutVite()->actingAs($user)->get(route('dashboard'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('can_view_cash_metrics', true)
+            ->where('can_view_profit_metrics', true)
+            ->has('revenue')
+            ->has('revenue_breakdown')
+            ->has('revenue_by_payment')
+            ->has('net_profit')
+        );
+    }
+
+    public function test_operator_sees_cash_but_not_profit_metrics(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id]);
+        $operator = User::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'role' => 'operator',
+        ]);
+        $operator->branches()->attach($branch->id);
+
+        $response = $this->withoutVite()->actingAs($operator)->get(route('dashboard'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('can_view_cash_metrics', true)
+            ->where('can_view_profit_metrics', false)
+            ->has('revenue')
+            ->has('revenue_breakdown')
+            ->has('revenue_by_payment')
+            ->has('revenue_by_payment.cash')
+            ->has('revenue_by_payment.terminal')
+            ->has('revenue_by_payment.transfer')
+            ->missing('net_profit')
+        );
     }
 
     public function test_root_url_redirects_to_login(): void

@@ -136,6 +136,13 @@ class UserController extends Controller
     {
         $restaurant = $request->user()->restaurant;
 
+        // Invariant: this controller only manages operators. Admins are created
+        // only via SuperAdmin when a restaurant is provisioned and are never
+        // deletable from the restaurant panel — this prevents a restaurant
+        // from accidentally being left with zero admins via any flow
+        // (including self-deletion, since the current user is always admin
+        // in this controller group). If you ever open an admin-deletion path,
+        // gate it on Restaurant::hasAnotherAdmin($user).
         if ($user->restaurant_id !== $restaurant->id || $user->isAdmin()) {
             abort(403);
         }
