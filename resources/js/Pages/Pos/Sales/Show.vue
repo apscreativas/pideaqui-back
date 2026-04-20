@@ -74,6 +74,33 @@ function onPaid() {
     showPostPayPrint.value = true
 }
 
+/**
+ * Post-sale exit: close the print-confirmation modal and go back to the POS
+ * list so the cashier never gets stuck on a paid-sale detail view. When the
+ * cashier asks to print, defer the redirect until the browser's print dialog
+ * closes (afterprint) so the print doesn't get cancelled by the navigation.
+ * The 10s fallback handles browsers/flows where afterprint never fires
+ * (e.g. the user never opens a real printer, or closes the preview tab).
+ */
+function finishAndExit(andPrint = false) {
+    showPostPayPrint.value = false
+    if (!andPrint) {
+        router.visit(route('pos.index'))
+        return
+    }
+    let navigated = false
+    const goToIndex = () => {
+        if (navigated) { return }
+        navigated = true
+        window.removeEventListener('afterprint', goToIndex)
+        clearTimeout(safetyTimer)
+        router.visit(route('pos.index'))
+    }
+    window.addEventListener('afterprint', goToIndex)
+    const safetyTimer = setTimeout(goToIndex, 10000)
+    reprint()
+}
+
 function back() { router.visit(route('pos.index')) }
 </script>
 
@@ -334,8 +361,8 @@ function back() { router.visit(route('pos.index')) }
                     <h2 class="text-lg font-bold mb-1 text-gray-900">Venta cobrada</h2>
                     <p class="text-sm text-gray-500 mb-4">¿Imprimir ticket de venta?</p>
                     <div class="grid grid-cols-2 gap-3">
-                        <button @click="showPostPayPrint = false" class="border border-gray-200 hover:bg-gray-50 py-2.5 rounded-xl text-sm font-semibold">No, gracias</button>
-                        <button @click="showPostPayPrint = false; reprint()" class="bg-[#FF5722] hover:bg-[#D84315] text-white py-2.5 rounded-xl text-sm font-bold">Sí, imprimir</button>
+                        <button @click="finishAndExit(false)" class="border border-gray-200 hover:bg-gray-50 py-2.5 rounded-xl text-sm font-semibold">Volver al POS</button>
+                        <button @click="finishAndExit(true)" class="bg-[#FF5722] hover:bg-[#D84315] text-white py-2.5 rounded-xl text-sm font-bold">Imprimir y volver</button>
                     </div>
                 </div>
             </div>
