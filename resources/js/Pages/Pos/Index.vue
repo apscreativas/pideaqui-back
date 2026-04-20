@@ -18,6 +18,7 @@ const props = defineProps({
     paymentMethods: Array,
     cashier: Object,
     restaurantName: String,
+    defaultProductImageUrl: { type: String, default: null },
     filters: Object,
     totals: Object,
 })
@@ -525,6 +526,7 @@ onUnmounted(() => {
             :branches="branches"
             :categories="categories"
             :cashier="cashier"
+            :default-product-image-url="defaultProductImageUrl"
             @close="showNewSale = false"
             @created="onSaleCreated"
         />

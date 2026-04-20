@@ -180,6 +180,7 @@ class PosController extends Controller
             'paymentMethods' => $paymentMethods,
             'cashier' => ['id' => $user->id, 'name' => $user->name],
             'restaurantName' => $user->restaurant->name,
+            'defaultProductImageUrl' => $user->restaurant->default_product_image_url,
             'can_view_financials' => $canViewFinancials,
             'filters' => [
                 'date_from' => $dateFrom,

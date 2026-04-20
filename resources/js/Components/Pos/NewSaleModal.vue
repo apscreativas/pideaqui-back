@@ -7,7 +7,15 @@ const props = defineProps({
     branches: { type: Array, default: () => [] },
     categories: { type: Array, default: () => [] },
     cashier: { type: Object, default: () => ({}) },
+    defaultProductImageUrl: { type: String, default: null },
 })
+
+// Resolved tile image: product's own image first, then the restaurant's
+// default image, then null (renders the placeholder icon). Keeps POS tiles
+// visually consistent with the customer SPA's ProductImage fallback.
+function tileImageUrl(product) {
+    return product.image_url || props.defaultProductImageUrl || null
+}
 
 const emit = defineEmits(['close', 'created'])
 
@@ -327,9 +335,9 @@ function submit() {
                             >
                                 <div
                                     class="aspect-square rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center"
-                                    :style="product.image_url ? `background-image: url(${product.image_url}); background-size: cover; background-position: center;` : ''"
+                                    :style="tileImageUrl(product) ? `background-image: url(${tileImageUrl(product)}); background-size: cover; background-position: center;` : ''"
                                 >
-                                    <span v-if="!product.image_url" class="material-symbols-outlined text-3xl text-orange-300">restaurant</span>
+                                    <span v-if="!tileImageUrl(product)" class="material-symbols-outlined text-3xl text-orange-300">restaurant</span>
                                 </div>
                                 <div class="min-h-[2.5rem] flex flex-col justify-between">
                                     <p class="font-bold text-gray-900 text-sm leading-tight line-clamp-2">{{ product.name }}</p>
