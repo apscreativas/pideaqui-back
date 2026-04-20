@@ -38,6 +38,7 @@
 | 14 | POS · Caja | [14-pos.md](./14-pos.md) | Sin mockup (post-MVP, layout 3 columnas Square) |
 | 15 | Promociones | [15-promotions.md](./15-promotions.md) | Sin mockup (post-MVP) |
 | 16 | Cupones de Descuento | [16-coupons.md](./16-coupons.md) | Sin mockup (post-MVP) |
+| 18 | Gastos (Expenses) | [18-expenses.md](./18-expenses.md) | Sin mockup (post-MVP) |
 
 ## Módulos del Panel SuperAdmin
 
@@ -64,7 +65,7 @@
 
 ## Fases de Implementación
 
-Ver [../PHASES.md](../PHASES.md) para el orden de implementación recomendado y el estado de cada fase.
+Ver [../ROADMAP.md](../ROADMAP.md) para el mapa completo del producto (MVP completado + post-MVP implementado + backlog). _El antiguo `PHASES.md` fue reemplazado por `ROADMAP.md` en Abr 2026._
 
 ---
 
@@ -137,7 +138,8 @@ Referencia rápida de dónde vive cada feature implementada:
 | **Promociones standalone** | [15-promotions](./15-promotions.md) | [04-menu](./04-menu.md) |
 | **Cupones de descuento** | [16-coupons](./16-coupons.md) | [03-orders](./03-orders.md) |
 | **Billing SaaS (Stripe + Cashier)** | [17-billing](./17-billing.md) | [07-superadmin](./07-superadmin.md), [06-settings](./06-settings.md) |
+| **Gastos operacionales** | [18-expenses](./18-expenses.md) | [02-dashboard](./02-dashboard.md), [06-settings](./06-settings.md) |
 
 ---
 
-_PideAqui — Índice de Módulos v1.1 — Actualizado Abril 2026 (módulos 15, 16, 17; nuevas features en 03, 04, 06)_
+_PideAqui — Índice de Módulos v1.2 — Actualizado Abril 2026 (módulo 18 Gastos; v1.1 introdujo 15, 16, 17)_

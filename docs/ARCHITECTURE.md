@@ -1,363 +1,310 @@
-# PideAqui — Arquitectura del Sistema
+# PideAquí — Arquitectura del Sistema
 
-> Decisiones técnicas y arquitectónicas del MVP.
-> Versión: Fase 6 — Febrero 2026
-
----
-
-## Visión General
-
-PideAqui es una plataforma SaaS multi-restaurante con tres interfaces:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         PideAqui SaaS                           │
-├──────────────────┬──────────────────────┬───────────────────────┤
-│  client/         │  admin/              │  admin/ (SuperAdmin)  │
-│  Vue 3 SPA       │  Laravel + Inertia   │  Laravel + Inertia    │
-│  (por restaurante)│  + Vue 3            │  + Vue 3              │
-└──────────────────┴──────────────────────┴───────────────────────┘
-        ↕ REST API (token)      ↕ Inertia (SSR bridge)
-                      Backend Laravel 12
-                      PostgreSQL
-```
+> Versión: v3.0 — Abril 2026
+> Refleja el estado post-MVP con billing Stripe, POS, cupones, edición de pedidos, fechas especiales y gastos.
+> Para diagramas Mermaid (ER, rutas, flujos), ver [BACKEND_ARCHITECTURE_DIAGRAMS.md](./BACKEND_ARCHITECTURE_DIAGRAMS.md).
 
 ---
 
-## Decisiones Arquitectónicas Clave
+## 1. Visión general
 
-### 1. Admin Panel: Laravel + Inertia.js + Vue 3 (SSR Bridge)
+PideAquí es una plataforma SaaS multi-restaurante. Tres interfaces + un backend:
 
-**Decisión:** Los paneles de administración (Admin Restaurante y SuperAdmin) usan Inertia.js como puente entre Laravel y Vue 3. Los controladores retornan `Inertia::render('PageName', $data)` en lugar de `view()`.
-
-**Razón:**
-- Sin necesidad de una API REST separada para el admin.
-- El servidor mantiene el control del routing y autenticación.
-- Vue 3 maneja la reactividad y UI del lado del cliente.
-- Aprovecha las características de Laravel (middleware, policies, guards) sin duplicación.
-
-**Estructura:**
 ```
-admin/resources/js/
-├── Pages/          ← Páginas Inertia (un .vue por ruta)
-├── Components/     ← Componentes reutilizables Vue 3
-└── app.js          ← Entry point (createInertiaApp)
+┌──────────────────┬──────────────────────┬──────────────────────────┐
+│  client/         │  admin/ (restaurante)│  admin/super (SaaS owner)│
+│  Vue 3 SPA       │  Inertia + Vue 3     │  Inertia + Vue 3         │
+│  (mobile first)  │  (desktop)           │  (desktop)               │
+└────────┬─────────┴─────────┬────────────┴─────────┬────────────────┘
+         │ REST + token      │ Inertia (SSR bridge) │ Inertia (SSR bridge)
+         └───────────────────┴──────────────────────┘
+                         ↓
+                ┌──────────────────────┐
+                │  Laravel 12 (PHP 8.5)│
+                │  ├── Policies/Guards │
+                │  ├── OrderService    │
+                │  ├── PosSaleService  │
+                │  ├── DeliveryService │
+                │  ├── OrderEditService│
+                │  ├── LimitService    │
+                │  ├── CancellationSv. │
+                │  └── StatisticsSv.   │
+                └──────────┬───────────┘
+                           ↓
+         ┌─────────────────┼───────────────────────┐
+         ↓                 ↓                       ↓
+  ┌─────────────┐  ┌──────────────────┐  ┌──────────────────┐
+  │PostgreSQL 18│  │ Laravel Reverb   │  │ Stripe (Cashier) │
+  │(multitenant)│  │ WebSockets       │  │ Billing + Portal │
+  └─────────────┘  └──────────────────┘  └──────────────────┘
 ```
 
-**Patrón de controlador:**
-```php
-return Inertia::render('Menu/Index', [
-    'categories' => CategoryResource::collection($categories),
-]);
-```
+Servicios externos: **Google Maps JS API** (frontend admin), **Google Distance Matrix API** (backend), **S3** (imágenes en producción), **SMTP** (NewOrderNotification).
 
 ---
 
-### 2. Frontend del Cliente: Vue 3 SPA + REST API (Token-based)
+## 2. Decisiones arquitectónicas clave
 
-**Decisión:** El frontend del cliente es un proyecto independiente (`client/`) construido con Vite + Vue 3 que se comunica con el backend exclusivamente mediante API REST.
+### 2.1 Admin + SuperAdmin: Laravel + Inertia + Vue 3 (sin API REST separada)
 
-**Razón:**
-- Se despliega una instancia por restaurante.
-- El backend identifica al restaurante por el `access_token` en el header de cada request.
-- Desacoplamiento total: el cliente puede actualizarse independientemente del backend.
-- Permite alojar el frontend en CDN/static hosting.
+Los dos paneles administrativos comparten backend y emiten HTML server-driven con payload JSON vía Inertia. Esto evita duplicar validación, auth y policies en un API layer.
 
-**Autenticación:**
-- Cada restaurante tiene un `access_token` único generado al crearse.
-- El cliente SPA envía el token en cada request a la API: `Authorization: Bearer {token}`.
-- El backend resuelve el restaurante y aplica el contexto de tenant.
+### 2.2 Cliente final: Vue 3 SPA + REST API con token por restaurante
+
+El SPA del cliente (`pideaqui-front`) es un repo independiente. Cada restaurante despliega un build con su `VITE_RESTAURANT_TOKEN` en el `.env`. El backend resuelve el tenant desde el header `X-Restaurant-Token` (o `Authorization: Bearer`).
+
+### 2.3 Landing: Nuxt 4 desacoplada (`landing-pideaqui`)
+
+Sitio promocional en repo propio. No consume el backend. Se deploya estático en Vercel.
+
+### 2.4 Multi-tenancy row-level (no schema-level)
+
+Una sola base de datos. Toda tabla del dominio tiene FK `restaurant_id`. El aislamiento se asegura con:
+
+1. **`TenantScope`** (global scope aplicado a modelos con el trait `BelongsToTenant`): filtra automáticamente por `restaurant_id` del usuario autenticado en el guard `web`. No se aplica en CLI, rutas de API, ni con guard `superadmin` activo.
+2. **`EnsureTenantContext` middleware** (`tenant`): exige `restaurant_id` no nulo en el user autenticado; 403 si falta.
+3. **Policies** en cada modelo del dominio: `user.restaurant_id == resource.restaurant_id`.
+
+**Comportamiento cross-tenant:** retorna **404** (no 403) para ocultar la existencia del recurso — elegido a propósito.
+
+### 2.5 Guards de autenticación
+
+| Guard | Modelo | Tabla | Uso |
+|---|---|---|---|
+| `web` | `User` | `users` | Admin de restaurante y operadores (rol `admin` u `operator`) |
+| `superadmin` | `SuperAdmin` | `super_admins` | Dueño de la plataforma SaaS |
+
+El login SuperAdmin vive en `/super/login`, aislado del admin. No hay registro público en ningún caso.
+
+### 2.6 Roles dentro del tenant
+
+Dos roles en `users.role`:
+
+- `admin`: acceso total al panel del restaurante.
+- `operator`: acceso limitado. Ve pedidos y POS (de su sucursal asignada), pero no Settings, Cupones, Gastos, Suscripción, Estadísticas avanzadas. `branch_id` del user puede restringir qué sucursal ve.
+
+### 2.7 Billing: Laravel Cashier con `Restaurant` como Billable
+
+Decisión clave: el `Restaurant` es el `Billable`, no el `User`. Un restaurante puede tener múltiples usuarios; la suscripción pertenece al restaurante. Esto implica que `subscriptions.user_id` (columna estándar de Cashier) en realidad almacena `restaurants.id` — la migración `rename_user_id_to_restaurant_id_in_subscriptions_table` renombra la columna. Ver [modules/17-billing.md](./modules/17-billing.md).
+
+Modos de cobro coexistentes:
+
+- **`manual`**: SuperAdmin define `orders_limit` + período (`orders_limit_start`, `orders_limit_end`). Sin Stripe.
+- **`subscription`**: plan + Stripe; límites y período vienen del plan + webhook Stripe.
+
+El gate `Restaurant::canOperate()` decide si el restaurante puede recibir/registrar pedidos manualmente y POS. **No** bloquea al alcanzar `orders_limit` (capacidad ≠ estado del servicio).
+
+### 2.8 POS desacoplado del flujo de pedidos
+
+El módulo POS (`/pos`) vive en tablas separadas (`pos_sales`, `pos_sale_items`, `pos_sale_item_modifiers`, `pos_payments`). **No consume `orders_limit`**. No usa `Customer`, `Coupon`, `Promotion`, `DeliveryService`. Sus eventos WebSocket viven en un canal privado distinto (`restaurant.{id}.pos`) para no contaminar el Kanban de pedidos.
+
+### 2.9 WebSockets: Laravel Reverb, broadcast síncrono
+
+Kanban de pedidos y POS se actualizan en tiempo real. Eventos marcados con `ShouldBroadcastNow` (síncrono, sin cola) para garantizar delivery inmediato. Si Reverb cae, admin wraps en try/catch: el cambio de status se persiste igualmente, solo se pierde la actualización en vivo.
+
+Canales privados:
+
+- `restaurant.{restaurantId}` — `OrderCreated`, `OrderStatusChanged`, `OrderUpdated`, `OrderCancelled`
+- `restaurant.{restaurantId}.pos` — `PosSaleCreated`, `PosSaleStatusChanged`, `PosSaleCancelled`
+
+Autorización en `routes/channels.php` (cada admin solo escucha su restaurante).
+
+### 2.10 Delivery: pre-filtro Haversine + Google Distance Matrix
+
+Decisión de costo: evitar múltiples llamadas a Distance Matrix.
+
+- **1 sucursal activa** → 1 sola llamada a Google.
+- **2+ sucursales** → Haversine (gratis) rankea por cercanía en línea recta → 1 sola llamada a Google para la sucursal top-1 para obtener distancia real por calles.
+- **Sin fallback a Haversine** si Google falla. Lanza `DomainException` — preferimos fallar claro que cobrar envíos mal calculados.
+
+### 2.11 Anti-tampering de precios
+
+`OrderService` **siempre** recalcula `subtotal`, `delivery_cost`, `discount_amount` y `total` server-side. El `unit_price` enviado por el cliente se valida contra el snapshot del producto con tolerancia ±$0.01 (redondeo). `production_cost` nunca se expone a la API pública.
+
+### 2.12 Snapshots históricos en order_items
+
+`order_items.product_name`, `order_items.production_cost`, `order_item_modifiers.modifier_option_name`, `order_item_modifiers.production_cost` se copian al crear el pedido. Si el menú cambia después (precio, nombre, costo), los pedidos históricos conservan sus datos reales. `StatisticsService::netProfit()` siempre usa snapshots.
+
+### 2.13 Concurrencia: `lockForUpdate` + optimistic lock
+
+- **Límite de pedidos**: `LimitService::isOrderLimitReached()` se consulta dentro de una transacción con `lockForUpdate()` sobre el `Restaurant`. Evita la race condition clásica "dos pedidos simultáneos justo en el borde del límite".
+- **Edición de pedidos**: `OrderEditService` usa `lockForUpdate()` + optimistic lock vía `expected_updated_at`. Si el cliente envía una versión stale, responde `409 Conflict`.
+
+### 2.14 Auditoría
+
+- **`order_audits`**: cada edición de pedido guarda `action`, `changes` (JSON diff), `reason`, totales antes/después, IP y user_id.
+- **`billing_audits`**: cambios críticos de billing (gate bloqueado, fallback sin plan, grace extendido, etc.).
+- **`stripe_webhook_events`** con unique constraint: deduplicación de webhooks idempotente. Si Stripe reenvía el mismo evento, no se aplica dos veces.
+
+### 2.15 Límites tras el boundary
+
+Solo se validan inputs externos (API pública, formularios admin, webhooks Stripe). No se revalidan datos internos que ya pasaron por Form Request o vienen de BD.
 
 ---
 
-### 3. Base de Datos: PostgreSQL — Multitenancy por `restaurant_id` FK
+## 3. Módulos del dominio
 
-**Decisión:** Multitenancy de tipo "row-level" (discriminador por columna), no schema-level ni base de datos separada.
+Para detalle granular, ver [docs/modules/INDEX.md](./modules/INDEX.md). Resumen de qué vive dónde:
 
-**Implementación:**
-- Todas las tablas del dominio tienen una FK `restaurant_id` que apunta al restaurante propietario.
-- Un `TenantMiddleware` inyecta el `Restaurant` del usuario autenticado en todas las queries del panel admin.
-- En la API pública, el tenant se resuelve desde el `access_token` del restaurante.
-
-**Razón:**
-- Simplicidad operacional: una sola base de datos, una sola migración, un solo backup.
-- PostgreSQL con índices en `restaurant_id` garantiza performance adecuada para el volumen esperado.
-- Los Policies de Laravel garantizan que ningún admin pueda acceder a datos de otro restaurante.
-
----
-
-### 4. Guards de Autenticación
-
-**Dos guards:**
-
-| Guard | Usuario | Acceso |
+| Módulo | Áreas | Archivo |
 |---|---|---|
-| `web` | `User` (Admin Restaurante) | Panel de administración de su restaurante |
-| `superadmin` | `SuperAdmin` (modelo separado) | Panel SuperAdmin completo |
-
-- El guard `web` autentica Admins de restaurante. Cada `User` está asociado a un `Restaurant`.
-- El guard `superadmin` usa el modelo `SuperAdmin` con credenciales separadas. Sin registro público.
-- El login de SuperAdmin está en `/super/login`, completamente separado del login de Admin.
-
----
-
-### 5. Tenant Middleware + Global Query Scope
-
-**Middleware:** `EnsureTenantContext` (`app/Http/Middleware/EnsureTenantContext.php`)
-
-**Comportamiento:**
-- Se aplica a todas las rutas del panel admin (excepto login/logout).
-- Verifica que el usuario autenticado tenga `restaurant_id`. Si no, retorna 403.
-- Registrado como alias `tenant` en `bootstrap/app.php`.
-
-**Global Query Scope:** `TenantScope` (`app/Models/Scopes/TenantScope.php`)
-
-- Se activa automáticamente en todos los modelos con el trait `BelongsToTenant`.
-- Filtra por `restaurant_id` del usuario autenticado en el guard `web`.
-- No se aplica en CLI, rutas de API, ni cuando el guard `superadmin` está activo.
-
-```php
-// app/Models/Scopes/TenantScope.php
-class TenantScope implements Scope
-{
-    public function apply(Builder $builder, Model $model): void
-    {
-        if (auth()->guard('web')->check()) {
-            $builder->where($model->getTable().'.restaurant_id', auth()->guard('web')->user()->restaurant_id);
-        }
-    }
-}
-```
-
-**Trait:** `BelongsToTenant` (`app/Models/Concerns/BelongsToTenant.php`)
-
-Aplicado a los modelos con `restaurant_id` directo:
-- `Branch`, `Category`, `Product`
-- `PaymentMethod`, `DeliveryRange`, `Order`
-
-Los modelos sin `restaurant_id` directo (`ModifierGroup`, `ModifierOption`, `OrderItem`, `OrderItemModifier`) se acceden siempre a través de su relación padre, que ya está scopeada. `RestaurantSchedule` tiene `restaurant_id` directo y usa `BelongsToTenant`.
-
-**Para el panel SuperAdmin** (Fase 9), usar `withoutGlobalScope(TenantScope::class)` cuando se necesite acceso cross-tenant.
+| 01 — Auth | Login admin + superadmin, recuperación password | [01-auth.md](./modules/01-auth.md) |
+| 02 — Dashboard | KPIs, utilidad neta (revenue − cost − expenses) | [02-dashboard.md](./modules/02-dashboard.md) |
+| 03 — Pedidos | Kanban, detalle, edición, audit trail, manuales | [03-orders.md](./modules/03-orders.md) |
+| 04 — Menú | Categorías, productos, modifiers inline + catálogo | [04-menu.md](./modules/04-menu.md) |
+| 05 — Sucursales | CRUD + geolocalización, branch activo obligatorio | [05-branches.md](./modules/05-branches.md) |
+| 06 — Configuración | General, branding, horarios, fechas especiales, suscripción, usuarios | [06-settings.md](./modules/06-settings.md) |
+| 07 — SuperAdmin | CRUD restaurantes, planes, billing settings, reset token | [07-superadmin.md](./modules/07-superadmin.md) |
+| 08 — Flujo cliente | SPA Vue 3, carrito, checkout, WhatsApp | [08-customer-flow.md](./modules/08-customer-flow.md) |
+| 09 — Delivery | Haversine + Distance Matrix, rangos de envío | [09-delivery-service.md](./modules/09-delivery-service.md) |
+| 10 — API pública | REST endpoints autenticados por token | [10-api.md](./modules/10-api.md) |
+| 11 — Cancelaciones | Analytics de pedidos cancelados | [11-cancellations.md](./modules/11-cancellations.md) |
+| 12 — Mapa operativo | Google Maps con markers de pedidos y sucursales | [12-map.md](./modules/12-map.md) |
+| 13 — WebSockets | Reverb + Echo | [13-websockets.md](./modules/13-websockets.md) |
+| 14 — POS | Caja mostrador, pagos mixtos, ticket imprimible | [14-pos.md](./modules/14-pos.md) |
+| 15 — Promociones | Standalone (no descuento sobre productos) | [15-promotions.md](./modules/15-promotions.md) |
+| 16 — Cupones | Código, fixed/percentage, min_purchase, max_uses | [16-coupons.md](./modules/16-coupons.md) |
+| 17 — Billing | Stripe + Cashier, gate operacional, planes | [17-billing.md](./modules/17-billing.md) |
+| 18 — Gastos | Registro operacional + categorías jerárquicas | [18-expenses.md](./modules/18-expenses.md) |
 
 ---
 
-### 6. Cálculo de Delivery: Haversine + Google Distance Matrix
+## 4. Capa de servicios (`app/Services`)
 
-**Flujo de detección de sucursal más cercana:**
-
-```
-Cliente → Coordenadas GPS
-    ↓
-Pre-filtro Haversine (sin costo, en PHP/DB)
-    → Descarta sucursales lejanas
-    → Conserva top 1 candidata (MAX_CANDIDATES=1)
-    ↓
-Google Distance Matrix API (solo para candidata)
-    → Distancia real por calles
-    → Tiempo estimado
-    → Sin fallback: DomainException si Google falla
-    ↓
-Sucursal más cercana asignada
-    ↓
-Costo de envío por rango de distancia
-```
-
-**Razón:**
-- Haversine es gratis y rápido (distancia en línea recta), ideal para pre-filtrar.
-- Google Distance Matrix tiene costo por elemento consultado; se minimiza consultando solo 1 candidata.
-- El costo de envío se calcula buscando en qué rango de `delivery_ranges` cae la distancia real.
-- No hay fallback a Haversine: si Google Maps falla o retorna distancia inalcanzable (`PHP_FLOAT_MAX`), se lanza `DomainException`. Esto garantiza que los costos de envío siempre se basan en distancia real de conducción.
-
-**Nota:** Si el restaurante tiene una sola sucursal activa, se asigna directamente sin pre-filtro Haversine, pero se llama a Google Maps para obtener la distancia real.
-
----
-
-### 7. Dirección del Cliente: Sin Geocoding Inverso
-
-**Decisión:** La dirección del cliente se ingresa **manualmente** en un formulario de texto. El pin del mapa (Google Maps) solo obtiene coordenadas.
-
-**Razón:**
-- El geocoding inverso (coordenadas → dirección de texto) tiene costo adicional en la API de Google.
-- La dirección obtenida por geocoding inverso suele ser imprecisa en México (colonias, calles locales).
-- El cliente conoce mejor su dirección que la API.
-
-**Implementación:**
-- El mapa muestra un pin arrastrable para que el cliente ajuste su ubicación exacta.
-- Las coordenadas del pin se usan para calcular distancia y asignar sucursal.
-- El formulario tiene campos: calle/número/colonia/ciudad (texto libre) + campo de referencias.
-
----
-
-### 8. Billing y Suscripciones: Cashier + Planes Locales
-
-**Decisión:** Modelo SaaS con planes fijos, suscripciones recurrentes y pagos automáticos vía Stripe. Laravel Cashier maneja la comunicación con Stripe. Una tabla `plans` local almacena los límites de negocio.
-
-**Implementación** (completa, ver [docs/modules/17-billing.md](./modules/17-billing.md)):
-- `plans`: catálogo de planes con `orders_limit`, `max_branches`, precios, Stripe IDs.
-- **`Restaurant` es el `Billable` de Cashier** (no el `User`) — un restaurante tiene varios admins.
-- `LimitService` refactorizado: consulta plan primero, fallback a campos legacy.
-- `billing_settings`: configuración global (grace period days, payment grace days).
-- `billing_audits`: registro inmutable de todas las acciones de billing.
-- `stripe_webhook_events`: deduplicación de webhooks (unique `stripe_event_id`, `insertOrIgnore`).
-- Dos modos: `billing_mode ∈ {manual, subscription}`. Manual usa `orders_limit_start/end`; subscription sincroniza con Stripe.
-- Estados del restaurante: `active`, `past_due`, `grace_period`, `suspended`, `canceled`, `incomplete`, `disabled`.
-- Spec completo: `docs/BILLING_SPEC.md`
-
-**Razón:**
-- Los límites se resuelven localmente (sin consultar Stripe en runtime).
-- Cashier maneja webhooks, checkout, portal, proration — no se reimplementa.
-- Migración gradual: campos legacy coexisten con plan_id hasta completar la transición.
-- Sin overrides individuales — planes fijos para todos (simplicidad).
-
-**Flujo de onboarding:**
-1. SuperAdmin crea restaurante → se asigna plan de gracia + grace period.
-2. Restaurante opera con límites bajos durante el grace period.
-3. Admin elige plan y paga vía Stripe Checkout.
-4. Cobros automáticos recurrentes (mensual/anual).
-5. Cobro fallido → past_due → grace_period → suspended.
-
----
-
-### 8b. Gate Operacional: `Restaurant::canOperate()`
-
-**Decisión:** Hay un único punto de decisión (`Restaurant::canOperate()`) que determina si un restaurante puede crear pedidos/ventas a través de los canales internos (admin manual, POS). La decisión se expone a Inertia vía `HandleInertiaRequests` como props globales (`billing.can_operate`, `billing.block_reason`, `billing.block_message`), y también se enforcea en el backend en los controllers correspondientes.
-
-**Bloquea si:**
-- `status ∈ {disabled, suspended, incomplete, past_due}`
-- Modo subscription y `subscription_ends_at < now()`
-- Modo manual y `orders_limit_end < now()` (período vencido) o `orders_limit_start > now()` (no iniciado)
-
-**No bloquea** por alcanzar `orders_limit` — eso es una preocupación de capacidad, no de estado operativo. El POS tampoco se bloquea por límite; sólo el canal de API pública sí.
-
-**Preservación de ventas en curso:** el módulo POS permite **cerrar ventas ya iniciadas** (cobrar, imprimir, marcar como pagadas) aunque el restaurante se suspenda mientras hay carritos abiertos. Sólo se bloquea la creación de ventas *nuevas*.
-
-**Razón:** separar "puedo cobrar" de "estoy al día en mi cuenta" permite que el equipo de cocina no se vea interrumpido por un problema de facturación en mitad de un servicio, y evita que un admin quede atrapado con ventas imposibles de cerrar.
-
----
-
-### 8c. Dedup de Webhooks de Stripe
-
-**Decisión:** Stripe reintenta webhooks ante cualquier respuesta distinta a 2xx. El controller dedup´a cada evento usando la tabla `stripe_webhook_events` con unique constraint en `stripe_event_id`:
-
-```php
-$inserted = StripeWebhookEvent::insertOrIgnore([
-    'stripe_event_id' => $event->id,
-    'type' => $event->type,
-]);
-if ($inserted === 0) return response('duplicate', 200);
-```
-
-**Razón:** sin dedup, eventos como `invoice.paid` podían aplicarse dos veces (contando doble un período, re-asignando plan, etc.). El patrón es más simple que locks distribuidos y sobrevive a reinicios de la app.
-
-**Fallback suscripción-sin-plan:** si llega un webhook cuyo `price_id` no está en `plans`, se asigna la suscripción pero se deja `plan_id = null` y se registra en `BillingAudit` con acción `subscription_assigned_without_plan` — visible al SuperAdmin para resolución manual.
-
----
-
-### 9. Capa de Servicios y DTOs
-
-**Decisión:** La lógica de negocio compleja vive en `app/Services/`. Los datos de retorno estructurados usan DTOs `readonly` en `app/DTOs/`.
-
-**Servicios implementados:**
 | Servicio | Responsabilidad |
 |---|---|
-| `HaversineService` | Distancia en línea recta entre coordenadas (usado solo para pre-filtro en DeliveryService) |
-| `GoogleMapsService` | Wrapper de Google Distance Matrix API (inyectable, mockeable en tests) |
-| `DeliveryService` | Orquesta el flujo de 7 pasos para calcular sucursal + costo + horario. Sin fallback: falla si Google Maps no responde |
-| `LimitService` | Verifica límites de pedidos y sucursales (plan → legacy fallback) |
-| `OrderService` | Crea pedidos (API + manuales): valida, calcula totales en backend, snapshots, valida cupón con `lockForUpdate`, persiste, genera mensaje WhatsApp |
-| `OrderEditService` | Edita pedidos existentes: optimistic lock (`expected_updated_at`) + `lockForUpdate`, re-snapshot de precios, diff estructurado en `order_audits`, recalculo de cupón |
-| `CancellationService` | KPIs de cancelaciones: tasa, motivo top, desglose por razón/sucursal/día |
-| `StatisticsService` | KPIs del dashboard y ganancia neta. Usa snapshot columns de order_items/order_item_modifiers (no joins a catálogo) |
-| `Support\BillingMessages` | Helper para textos en español de `block_reason` (usado por canOperate + Inertia props) |
+| `OrderService` | Creación de pedidos: validación, anti-tampering, límites, totales, cupones, WhatsApp message, broadcast `OrderCreated` |
+| `OrderEditService` | Edición post-creación con audit trail, lock optimista, rollback en `409` |
+| `PosSaleService` | CRUD de ventas POS, pagos parciales, cierre automático cuando se paga el total |
+| `DeliveryService` | Orquesta `HaversineService` + `GoogleMapsService`, aplica `DeliveryRange` |
+| `HaversineService` | Distancia en línea recta entre coordenadas (pre-filtro, gratis) |
+| `GoogleMapsService` | Wrapper de Distance Matrix API (distancia real por calles) |
+| `LimitService` | Source of truth de límites: `isOrderLimitReached`, `limitReason`, `orderCountInPeriod` |
+| `CancellationService` | Agregaciones de cancelaciones combinando orders + pos_sales |
+| `StatisticsService` | KPIs del dashboard: revenue, costo, utilidad neta (cruza con expenses) |
+| `PosTicketNumberService` | Generación secuencial de números de ticket con prefijo por sucursal |
 
-**DTOs `readonly`:**
-| DTO | Uso |
-|---|---|
-| `DeliveryResult` | Resultado del cálculo de delivery (branch, distancia, costo, cobertura, horario) |
-| `OrderCreatedResult` | Resultado de creación de pedido (order + whatsapp_message) |
-
-**Patrón de inyección:** Los servicios se inyectan en controllers vía constructor. `GoogleMapsService` se puede mockear en tests con `$this->instance(GoogleMapsService::class, $mock)`.
-
-**Anti-tampering en OrderService:** Los precios del request se validan contra la DB (tolerancia ±$0.01). El subtotal y total siempre se recalculan en backend — nunca se confía en los valores del cliente.
-
-**Snapshot pattern:** Al crear un pedido, `OrderService` copia `product_name` y `production_cost` a `order_items`, y `modifier_option_name` y `production_cost` a `order_item_modifiers`. Esto desacopla los reportes financieros y el detalle de pedido de cambios posteriores en el catálogo (renombrar producto, ajustar costo). El mismo patrón aplica a promociones (se copia igual en `order_items`) y a modifiers del catálogo (`modifier_option_id = null` + snapshot de nombre/precio/costo). `StatisticsService.netProfit()` y `Orders/Show.vue` usan exclusivamente estos snapshots.
-
-**Optimistic + pesimistic lock en edición de pedidos:** `OrderEditService::update()` usa **ambos** niveles de lock:
-- **Optimistic** — compara `$order->updated_at` con `$validated['expected_updated_at']`. Si difieren → `HttpException(409)`. Detecta ediciones concurrentes entre admins sin costo de DB.
-- **Pesimistic** — dentro de la transacción, `lockForUpdate()` en la orden + re-valida estado. Protege la operación atómica de re-snapshot + actualización de totales + creación de audit.
-
-El cupón se re-valida con `lockForUpdate()` en `coupons` y `coupon_uses` también, para evitar que el mismo cupón se aplique simultáneamente en dos pedidos cerca del límite.
+Ningún servicio depende de `Request` o `Auth` directamente. Reciben los modelos como argumentos (testeable).
 
 ---
 
-### 10. Broadcasting Desacoplado (Reverb)
+## 5. Middleware custom
 
-**Decisión:** Los broadcasts de eventos (`OrderCreated`, `OrderStatusChanged`, `OrderCancelled`, `OrderUpdated`) son `ShouldBroadcastNow` (síncronos), pero los controllers envuelven cada llamada a `broadcast()` en `try/catch` y loggean warning si falla.
+| Middleware | Alias | Aplicación |
+|---|---|---|
+| `EnsureTenantContext` | `tenant` | Rutas admin autenticadas (exige `restaurant_id` en user) |
+| `EnsureRole` | `role:admin` / `role:operator` | Rutas restringidas por rol dentro del tenant |
+| `AuthenticateRestaurantToken` | `auth.restaurant` | Rutas `/api/*`, valida token + `canReceiveOrders()` |
+| `HandleInertiaRequests` | default | Props compartidos: auth user, billing state, flash messages |
 
-**Razón:** el panel admin depende de WebSockets sólo como UX — si Reverb no está corriendo (por ejemplo, durante un deploy o en un entorno donde no se quiera montar el daemon), los cambios de estatus se siguen guardando en DB y funcionan con recarga manual. El sistema nunca falla por un problema de transport.
-
-**Canal privado:** `restaurant.{restaurantId}` — autenticado en `routes/channels.php` contra el `restaurant_id` del usuario.
-
-**Echo en admin:** `Orders/Index.vue` y `Pos/Index.vue` se suscriben en `onMounted` y limpian en `onUnmounted`. El frontend usa `axios` como `authorizer` para el canal privado (CSRF meta tag + sesión).
-
----
-
-### 11. Escalabilidad: Paginación por Cursor + Índices
-
-**Decisión:** Las listas que crecen sin límite (historial de POS, pedidos cancelados, audits) usan **cursor pagination** en vez de offset. Los KPIs se resuelven en **una sola query agregada** (no N+1 ni post-procesamiento en PHP).
-
-**Refactor de Abril 2026** (ver `memory/project_pos_cancellations_scalability.md`):
-- 3 índices nuevos: `orders(restaurant_id, cancelled_at)`, `pos_sales(restaurant_id, cancelled_at)`, `pos_payments(pos_sale_id, payment_method_type)`
-- Rangos de fechas con timestamps (no `whereDate()`), para que el planner use los índices
-- Orden estable con tiebreaker `id DESC`
-- Broadcast local sin `router.reload` (deduplica y actualiza sólo el card afectado)
+Registrados en `bootstrap/app.php` (no `Http/Kernel.php` — Laravel 12).
 
 ---
 
-## Estructura de Carpetas del Proyecto
+## 6. Eventos de broadcast
 
-```
-PideAqui/
-├── docs/               ← Documentación compartida (este directorio)
-│   ├── PRD.md
-│   ├── ARCHITECTURE.md
-│   ├── DATABASE.md
-│   ├── CHANGELOG.md
-│   ├── API-REFERENCE.md
-│   └── modules/        ← 14 archivos de módulos
-├── admin/              ← Laravel 12 + Inertia + Vue 3 (paneles admin)
-│   ├── app/
-│   │   ├── DTOs/           ← Value objects readonly (DeliveryResult, OrderCreatedResult)
-│   │   ├── Services/       ← Lógica de negocio (DeliveryService, OrderService, etc.)
-│   │   ├── Http/
-│   │   │   ├── Controllers/Api/  ← Controllers API pública
-│   │   │   ├── Middleware/       ← AuthenticateRestaurantToken, EnsureTenantContext
-│   │   │   ├── Requests/         ← Form Requests (validación)
-│   │   │   └── Resources/        ← Eloquent API Resources
-│   │   ├── Models/
-│   │   │   ├── Concerns/   ← Traits (BelongsToTenant)
-│   │   │   └── Scopes/     ← Query Scopes (TenantScope)
-│   │   └── Policies/
-│   ├── resources/
-│   │   ├── js/
-│   │   │   ├── Pages/      ← Páginas Inertia (.vue)
-│   │   │   ├── Components/ ← Componentes Vue 3
-│   │   │   └── app.js      ← Entry point Inertia
-│   │   ├── css/app.css
-│   │   └── views/
-│   │       └── app.blade.php  ← Root template Inertia
-│   └── vite.config.js
-├── client/             ← Vite + Vue 3 SPA (frontend del cliente)
-│   ├── src/
-│   │   ├── views/
-│   │   ├── components/
-│   │   ├── router/
-│   │   └── stores/    ← Pinia stores
-│   └── vite.config.js
-├── PRD.md
-└── STATUS.md
-```
+Todos implementan `ShouldBroadcastNow` (sin cola):
+
+| Evento | Canal | Payload principal |
+|---|---|---|
+| `OrderCreated` | `restaurant.{id}` | id, status, delivery_type, totales, cliente, sucursal |
+| `OrderStatusChanged` | `restaurant.{id}` | order + `previous_status` |
+| `OrderUpdated` | `restaurant.{id}` | order completo (tras edición) |
+| `OrderCancelled` | `restaurant.{id}` | order + `cancellation_reason` |
+| `PosSaleCreated` | `restaurant.{id}.pos` | id, ticket_number, status, cajero, sucursal |
+| `PosSaleStatusChanged` | `restaurant.{id}.pos` | sale + `previous_status` |
+| `PosSaleCancelled` | `restaurant.{id}.pos` | sale + motivo |
+
+El admin envuelve `broadcast()` en try/catch — si Reverb cae, el cambio de status se persiste igual.
 
 ---
 
-_PideAqui — Arquitectura v1.2 — Marzo 2026_
+## 7. Tareas programadas
+
+Definidas en `routes/console.php` y ejecutadas por `schedule:run`:
+
+| Comando | Frecuencia | Propósito |
+|---|---|---|
+| `billing:check-grace` | Diario 06:00 | Suspende restaurantes con gracia expirada |
+| `billing:check-canceled` | Diario 06:05 | Suspende suscripciones canceladas cuyo período terminó |
+| `billing:send-reminders` | Diario 08:00 | Email de recordatorio antes de expiración de gracia |
+| `billing:reconcile` | Diario 03:00 | Sincroniza estado local con Stripe (detecta inconsistencias) |
+| `billing:apply-pending-downgrades` | Cada hora | Aplica downgrades programados cuando pasan su fecha |
+
+Comandos manuales (no schedule): `billing:sync-stripe` (crea Products/Prices), `billing:backfill-plans` (asigna planes a restaurantes legacy).
+
+---
+
+## 8. Stack técnico
+
+| Capa | Tecnología | Versión |
+|---|---|---|
+| Lenguaje | PHP | 8.5 |
+| Framework | Laravel | 12 |
+| Base de datos | PostgreSQL | 18 |
+| Containerización dev | Laravel Sail | 1.x |
+| WebSockets | Laravel Reverb | 1.8 |
+| Billing | Laravel Cashier | Stripe |
+| Bridge SSR admin | Inertia.js | 2 |
+| Frontend admin | Vue 3 + Tailwind v4 | Vite |
+| Ruteo JS → Laravel | Ziggy | 2.6 |
+| SPA cliente | Vue 3 + Pinia + vue-router | Vite 7 |
+| Landing | Nuxt 4 (SSG) | Node 22+ |
+| Testing | PHPUnit (no Pest) | 11 |
+| Formatter | Laravel Pint | 1.x |
+
+---
+
+## 9. Seguridad
+
+Auditoría aplicada en marzo 2026 (ver [STATUS.md](../STATUS.md) → sección auditoría). Controles activos:
+
+- **Rate limiting**: `throttle:5,1` en login/password reset, `throttle:30,1` en `POST /api/orders`, `throttle:60,1` en POS y preview delivery.
+- **Password hashing**: cast `hashed` en `User::$casts` (idempotente, detecta si ya es hash).
+- **Upload de imágenes**: `mimes:jpeg,jpg,png,gif,webp` — SVG bloqueado explícitamente para evitar XSS en assets.
+- **Request size caps**: `items max:50`, `quantity max:100`, `unit_price max:99999.99`, `modifier_option_id distinct`.
+- **Cross-product modifier validation**: cada item valida que sus modifiers pertenezcan al producto/promoción que eligió (no se acepta modifier_id de otro producto).
+- **Coupon stacking**: un cupón por pedido. Validación `min_purchase` al editar items (cupón se remueve si baja del mínimo).
+- **Stripe webhook dedup**: tabla `stripe_webhook_events` con unique constraint previene doble aplicación de eventos.
+- **Tenant isolation test coverage**: cada policy tiene test cross-tenant explícito.
+
+---
+
+## 10. Testing
+
+**619 funciones `test_*` en 31 archivos** (conteo auditable al Abr 17, 2026 vía `grep -c "public function test_" tests/Feature/*.php`).
+
+Distribución aproximada:
+
+- Auth + tenant isolation: `AuthTest`, `TenantContextTest`
+- CRUD admin: `BranchTest`, `MenuTest`, `ProductTest` (implícito), `SettingsTest`, `BrandingTest`
+- Pedidos: `OrderAdminTest`, `OrderApiTest`, `OrderEditTest`, `OrderManualTest`, `OrderNotificationTest`
+- POS: `PosSaleTest`
+- Billing: `BillingTest`, `BillingCommandsTest`, `DowngradeTest`, `StripeWebhookTest`, `RestaurantOperationalGateTest`
+- SuperAdmin: `SuperAdminTest`
+- Post-MVP: `CouponTest`, `PromotionTest`, `SpecialDateTest`, `ModifierCatalogTest`, `ExpenseTest`, `CancellationTest`, `MapControllerTest`, `BroadcastingTest`, `CategoryAvailabilityTest`
+- Servicios: `DeliveryServiceTest`, `LimitServiceTest`, `DashboardTest`
+
+Ver [CONTRIBUTING.md](../CONTRIBUTING.md) para cómo correr tests.
+
+---
+
+## 11. Deployment
+
+Cubierto exhaustivamente en [README.md](../README.md) — 3 opciones:
+
+1. **Laravel Cloud** (recomendado) — con WebSocket cluster gestionado.
+2. **Docker Compose en VPS** — `Dockerfile.prod` + `docker-compose.prod.yml` de referencia.
+3. **Servidor tradicional** (Nginx + PHP-FPM + systemd para Reverb/queue).
+
+Operaciones corrientes (backups, rotación de secrets, Stripe keys, runbook de incidentes): ver [OPERATIONS.md](./OPERATIONS.md).
+
+---
+
+## 12. Historial de la arquitectura
+
+Para el changelog detallado de cada decisión: [CHANGELOG.md](../CHANGELOG.md). Para diagramas visuales: [BACKEND_ARCHITECTURE_DIAGRAMS.md](./BACKEND_ARCHITECTURE_DIAGRAMS.md).
+
+---
+
+_PideAquí — Arquitectura v3.0 — Abril 2026_

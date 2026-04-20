@@ -248,7 +248,7 @@ protected function isAccessible(User $user, ?string $path = null): bool
 - Cada vez que implementes o modifiques una feature, actualiza el `STATUS.md`
   reflejando el nuevo porcentaje y estado real.
 
-- Si el cambio corresponde a una fase de `PHASES.md`, marca el avance correspondiente.
+- Si el cambio corresponde a una capacidad en `docs/ROADMAP.md`, marca el avance correspondiente (el antiguo `PHASES.md` fue reemplazado por `ROADMAP.md` en Abr 2026).
 
 - Si agregas o modificas un módulo que tiene su archivo en `docs/modules/`,
   actualiza ese archivo con lo que cambió.

@@ -1,17 +1,19 @@
-# PRD — PideAqui
+# PRD — PideAquí
 
 ## Product Requirements Document
 
-### Plataforma SaaS de Menú Digital y Gestión de Pedidos Multi-Restaurante
+### Plataforma SaaS de Menú Digital, Pedidos y POS Multi-Restaurante
 
 ---
 
-| Campo          | Detalle           |
-| -------------- | ----------------- |
-| **Versión**    | 2.2 — MVP         |
-| **Fecha**      | Febrero 2026      |
-| **Estado**     | En revisión       |
-| **Responsivo** | Sí — Mobile first |
+| Campo          | Detalle                                                                  |
+| -------------- | ------------------------------------------------------------------------ |
+| **Versión**    | 3.0 — Producto completo (MVP + post-MVP)                                 |
+| **Fecha**      | Abril 2026                                                               |
+| **Estado**     | En producción                                                            |
+| **Responsivo** | Sí — Mobile first (cliente), desktop (admin y SuperAdmin)                |
+
+> Las secciones 1–9 describen el **MVP** entregado en febrero–marzo 2026 y siguen siendo válidas como base del producto. La sección **10** documenta el alcance **post-MVP** (billing Stripe, POS, cupones, promociones standalone, edición de pedidos, gastos, fechas especiales, etc.). Para el mapa completo de lo implementado, ver [ROADMAP.md](./ROADMAP.md).
 
 ---
 
@@ -73,11 +75,12 @@ Proveer a los restaurantes una herramienta accesible, rápida y sin comisiones p
 
 ## 3. Usuarios y Roles
 
-| Rol                    | Tipo    | Interfaz                             | Descripción                                                                                                                                                                                                                                                               |
-| ---------------------- | ------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Super Admin**        | Interno | Panel SuperAdmin                     | Administra la plataforma completa. Crea restaurantes, configura límites de pedidos mensuales y sucursales manualmente por restaurante.                                                                                                                                    |
-| **Admin Restaurante**  | Tenant  | Panel Admin Restaurante              | Dueño o encargado. Es la **única persona** que accede al panel. Configura el menú (compartido entre sucursales), crea sucursales si los límites lo permiten, visualiza y gestiona el estatus de pedidos, y configura métodos de pago. No puede crear pedidos manualmente. |
-| **Cliente / Comensal** | Público | Frontend del cliente (independiente) | Usuario final. Accede al menú, se le asigna la sucursal más cercana y realiza pedidos. La comunicación post-pedido es directamente por WhatsApp. **No requiere cuenta ni registro.**                                                                                      |
+| Rol                    | Tipo    | Interfaz                             | Descripción                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | ------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Super Admin**        | Interno | Panel SuperAdmin                     | Dueño de la plataforma SaaS. Crea restaurantes, administra planes de suscripción, configura billing global, regenera tokens, inicia/extiende periodos de gracia.                                                                                                                                            |
+| **Admin Restaurante**  | Tenant  | Panel Admin Restaurante              | Dueño o encargado del restaurante. Acceso total al panel: menú, sucursales, pedidos (incluida creación manual + edición), POS, cupones, promociones, gastos, suscripción, usuarios, configuración general, estadísticas y mapa operativo.                                                                   |
+| **Operator**           | Tenant  | Panel Admin Restaurante              | Empleado del restaurante. Ve pedidos (filtrados por su `branch_id` si aplica) y puede operar POS. No accede a configuración, cupones, suscripción, gastos ni estadísticas avanzadas. _Se agregó post-MVP; no existía en PRD v2.2._                                                                          |
+| **Cliente / Comensal** | Público | Frontend del cliente (independiente) | Usuario final. Accede al menú, se le asigna la sucursal más cercana y realiza pedidos. La comunicación post-pedido es directamente por WhatsApp. **No requiere cuenta ni registro.**                                                                                                                        |
 
 ---
 
@@ -94,9 +97,9 @@ Proveer a los restaurantes una herramienta accesible, rápida y sin comisiones p
 
 - Interfaz web dentro del sistema principal.
 - Acceso por correo y contraseña.
-- Permite gestionar: menú, sucursales, pedidos, métodos de pago, configuración general.
-- **Solo el administrador del restaurante** accede a este panel. No existen roles adicionales de staff u operador.
-- Cada administrador solo ve los datos de **su propio restaurante**.
+- Permite gestionar: menú, sucursales, pedidos (incluidos manuales), POS, cupones, promociones, gastos, usuarios del restaurante, suscripción, configuración general.
+- Dos roles dentro del tenant: `admin` (acceso total) y `operator` (ver pedidos + POS, sin acceso a configuración).
+- Cada usuario solo ve los datos de **su propio restaurante** (multi-tenancy row-level).
 
 ### 4.3 Panel del SuperAdmin
 
@@ -545,4 +548,89 @@ El administrador activa o desactiva cada método desde **Configuración → Mét
 
 ---
 
-_PRD v2.2 — PideAqui — Febrero 2026_
+---
+
+## 10. Funcionalidades Post-MVP (Marzo–Abril 2026)
+
+Desde el MVP v2.2, el producto incorporó las siguientes capacidades. Cada una tiene documentación detallada en `docs/modules/`.
+
+### 10.1 Modelo comercial SaaS con Stripe
+
+El producto pasó de "gestión manual de límites" a un modelo de suscripciones reales. Dos modos coexistentes:
+
+- **Manual**: SuperAdmin define período (`orders_limit_start/end`) y `orders_limit` directamente.
+- **Subscription**: el admin elige plan, paga vía Stripe Checkout, Cashier gestiona webhooks/renovaciones.
+
+Estados del restaurante (`status`): `active`, `grace_period`, `past_due`, `incomplete`, `suspended`, `canceled`, `disabled`.
+
+Gate operacional (`canOperate()`) bloquea creación de pedidos manuales/POS cuando el estado no es operacional o el período expiró. **No bloquea por alcanzar `orders_limit`** (capacidad ≠ estado del servicio).
+
+Referencia: [17-billing.md](./modules/17-billing.md), [BILLING_SPEC.md](./BILLING_SPEC.md).
+
+### 10.2 Punto de Venta (POS)
+
+Módulo para mostrador físico en `/pos`. Tablas separadas (`pos_sales`, `pos_sale_items`, `pos_sale_item_modifiers`, `pos_payments`). Pagos mixtos (cash/terminal/transfer con splits), ticket imprimible, Kanban POS. **No consume `orders_limit`**. Canal de broadcast aislado: `restaurant.{id}.pos`.
+
+Referencia: [14-pos.md](./modules/14-pos.md).
+
+### 10.3 Pedidos manuales + Edición con audit trail
+
+- **Pedidos manuales**: admin crea un pedido directamente desde el Tablero. Columna `orders.source` = `api|manual`.
+- **Edición post-creación**: mientras el pedido esté en `received` o `preparing`. Audit trail completo en `order_audits` (changes JSON, IP, user_id). Optimistic lock: si el cliente envía una versión stale, responde `409 Conflict`.
+
+Referencia: [03-orders.md](./modules/03-orders.md).
+
+### 10.4 Promociones standalone + Cupones de descuento
+
+- **Promociones**: ítems independientes con precio, costo, días/horarios activos. No son descuentos sobre productos existentes.
+- **Cupones**: por código, fixed o percentage, `min_purchase`, `max_uses_per_customer`, `max_total_uses`. Descuento aplica solo al subtotal (no al envío), calculado server-side con anti-tampering.
+
+Referencias: [15-promotions.md](./modules/15-promotions.md), [16-coupons.md](./modules/16-coupons.md).
+
+### 10.5 Fechas especiales y días festivos
+
+Tabla `restaurant_special_dates` permite definir holidays recurrentes (por mes+día) o cierres/horarios especiales puntuales. `Restaurant::getResolvedScheduleForDate()` aplica la cadena de prioridad `special_date > regular schedule`. API pública expone `closure_reason` (`holiday | special_hours | null`) y `today_schedule`.
+
+Referencia: [06-settings.md](./modules/06-settings.md) §"Fechas especiales".
+
+### 10.6 Catálogo de modificadores reutilizables
+
+Sistema híbrido: los modifiers per-product (inline) siguen funcionando, más un catálogo a nivel restaurante (`modifier_group_templates`, `modifier_option_templates`). El producto puede combinar ambas fuentes con campo `source: 'inline' | 'catalog'`.
+
+Referencia: [04-menu.md](./modules/04-menu.md) §"Catálogo de Modificadores".
+
+### 10.7 Tiempo real (WebSockets)
+
+Laravel Reverb + Echo. Kanban de pedidos se actualiza automáticamente al crear/avanzar/cancelar/editar. POS usa canal separado. Eventos síncronos (`ShouldBroadcastNow`) envueltos en try/catch — si Reverb cae, el cambio se persiste igual.
+
+Referencia: [13-websockets.md](./modules/13-websockets.md).
+
+### 10.8 Mapa operativo + Cancelaciones (Analytics)
+
+- **Mapa operativo** (`/map`): Google Maps JS API con markers de pedidos y sucursales. Filtros por fecha/status/branch. KPIs en sidebar.
+- **Cancelaciones** (`/cancellations`): dashboard con tasa de cancelación, motivos, breakdown por sucursal y por día. Combina orders + pos_sales cancelados.
+
+Referencias: [12-map.md](./modules/12-map.md), [11-cancellations.md](./modules/11-cancellations.md).
+
+### 10.9 Gastos operacionales
+
+Módulo 18. Registro de gastos (renta, servicios, insumos, etc.) con categorización jerárquica (categoría → subcategoría), adjuntos de comprobantes (max 10, 5 MB, JPEG/PNG/WebP/PDF) y agregaciones para reportes. Se cruza con revenue para calcular utilidad neta real en el dashboard.
+
+Referencia: [18-expenses.md](./modules/18-expenses.md).
+
+### 10.10 Gestión de usuarios del restaurante
+
+Roles dentro del tenant: `admin` (todo el panel), `operator` (ver pedidos + POS, sin configuración). Un operator puede estar scoped a una `branch_id` específica. CRUD completo desde Settings → Usuarios.
+
+### 10.11 Notificaciones y comunicaciones
+
+- **Email `NewOrderNotification`** al restaurante cuando llega pedido nuevo, con toggle `notify_new_orders` por restaurante.
+- **Emails de billing** (`GraceExpiringNotification`): recordatorio antes de expiración de gracia, configurable globalmente por SuperAdmin.
+
+### 10.12 Seguridad reforzada
+
+Controles aplicados post-auditoría (marzo 2026): rate limiting en login y `POST /api/orders`, password hashing idempotente, SVG bloqueado en uploads, required modifier groups, dedup `modifier_option_id`, cross-product modifier validation, Stripe webhook dedup vía `stripe_webhook_events`, lock + optimistic lock en edición de pedidos, TOCTOU fix en límites con `lockForUpdate()`.
+
+---
+
+_PRD v3.0 — PideAquí — Abril 2026 (actualización del v2.2 Feb 2026)_

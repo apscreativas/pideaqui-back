@@ -37,9 +37,11 @@ Tambien sirve como backend API para la [SPA del cliente](../client/).
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/Dayikeynes16/PideAqui.git
-cd PideAqui/admin
+git clone https://github.com/apscreativas/pideaqui-back.git
+cd pideaqui-back
 ```
+
+> El backend (este repo) vive independiente de la SPA del cliente (`pideaqui-front`) y de la landing (`landing-pideaqui`). Ver el `README.md` del meta-proyecto si clonaste los tres juntos.
 
 ### 2. Copiar variables de entorno
 
@@ -493,8 +495,8 @@ Estos comandos corren automaticamente via el scheduler de Laravel:
 
 #### 1. Crear la aplicacion
 
-1. Conecta tu repositorio de GitHub en Laravel Cloud.
-2. Selecciona la carpeta `admin/` como root del proyecto.
+1. Conecta tu repositorio de GitHub (`apscreativas/pideaqui-back`) en Laravel Cloud.
+2. Deja la raíz del repositorio como root del proyecto (este repo ya es el backend completo).
 3. Configura el environment (staging o production).
 
 #### 2. Agregar base de datos
@@ -618,8 +620,8 @@ Requisitos del servidor:
 #### 2. Clonar y configurar
 
 ```bash
-git clone https://github.com/Dayikeynes16/PideAqui.git
-cd PideAqui/admin
+git clone https://github.com/apscreativas/pideaqui-back.git
+cd pideaqui-back
 cp .env.example .env
 # Editar .env con valores de produccion (ver abajo)
 ```
@@ -854,8 +856,8 @@ Para desplegar directamente en un servidor sin Docker.
 
 ```bash
 # 1. Clonar y configurar entorno
-git clone https://github.com/Dayikeynes16/PideAqui.git
-cd PideAqui/admin
+git clone https://github.com/apscreativas/pideaqui-back.git
+cd pideaqui-back
 cp .env.example .env
 # Editar .env con valores de produccion
 
