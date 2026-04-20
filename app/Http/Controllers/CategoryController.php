@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
+use App\Services\CategoryImageProcessor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Storage;
 
 class CategoryController extends Controller
 {
+    public function __construct(private CategoryImageProcessor $imageProcessor) {}
+
     public function store(StoreCategoryRequest $request): RedirectResponse
     {
         $this->authorize('create', Category::class);
@@ -22,7 +25,7 @@ class CategoryController extends Controller
         $data['is_active'] = $data['is_active'] ?? true;
 
         if ($request->hasFile('image')) {
-            $data['image_path'] = $request->file('image')->store('categories', config('filesystems.media_disk', 'public'));
+            $data['image_path'] = $this->imageProcessor->store($request->file('image'), 'categories');
         }
 
         unset($data['image']);
@@ -46,7 +49,7 @@ class CategoryController extends Controller
             if ($category->image_path) {
                 Storage::disk(config('filesystems.media_disk', 'public'))->delete($category->image_path);
             }
-            $data['image_path'] = $request->file('image')->store('categories', config('filesystems.media_disk', 'public'));
+            $data['image_path'] = $this->imageProcessor->store($request->file('image'), 'categories');
         }
 
         unset($data['image']);

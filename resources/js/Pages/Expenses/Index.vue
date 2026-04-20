@@ -3,14 +3,17 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import DatePicker from '@/Components/DatePicker.vue'
+import Pagination from '@/Components/Pagination.vue'
 
 const props = defineProps({
-    expenses: Array,
+    expenses: { type: Object, required: true },
     categories: Array,
     branches: { type: Array, default: () => [] },
     filters: Object,
     totals: Object,
 })
+
+const rows = computed(() => props.expenses?.data ?? [])
 
 function fmt(v) { return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v ?? 0) }
 function dt(d) { return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(d)) }
@@ -29,7 +32,7 @@ const subcategoryOptions = computed(() => {
     return cat?.subcategories ?? []
 })
 
-function applyFilters() {
+function applyFilters(extra = {}) {
     router.get(route('expenses.index'), {
         date_from: dateFrom.value || undefined,
         date_to: dateTo.value || undefined,
@@ -38,7 +41,9 @@ function applyFilters() {
         subcategory_id: subcategoryId.value || undefined,
         min_amount: minAmount.value || undefined,
         max_amount: maxAmount.value || undefined,
-    }, { preserveState: true, replace: true })
+        per_page: props.filters?.per_page ?? 20,
+        ...extra,
+    }, { preserveState: true, preserveScroll: true, replace: true })
 }
 
 function resetSubcategory() {
@@ -262,7 +267,7 @@ function clearCategoryFilter() {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="e in expenses" :key="e.id" class="border-t border-gray-100 hover:bg-gray-50/50 transition">
+                    <tr v-for="e in rows" :key="e.id" class="border-t border-gray-100 hover:bg-gray-50/50 transition">
                         <td class="px-4 py-3 cursor-pointer" @click="router.visit(route('expenses.show', e.id))">
                             <p class="font-semibold text-gray-900 truncate max-w-xs" :title="e.title">{{ e.title }}</p>
                             <p v-if="e.description" class="text-xs text-gray-400 truncate max-w-xs">{{ e.description }}</p>
@@ -318,7 +323,7 @@ function clearCategoryFilter() {
                             </div>
                         </td>
                     </tr>
-                    <tr v-if="expenses.length === 0">
+                    <tr v-if="rows.length === 0">
                         <td colspan="7" class="text-center py-16">
                             <span class="material-symbols-outlined text-5xl text-gray-200">receipt_long</span>
                             <p class="text-sm text-gray-400 mt-2">No hay gastos en este periodo</p>
@@ -342,6 +347,14 @@ function clearCategoryFilter() {
                     </tr>
                 </tbody>
             </table>
+
+            <Pagination
+                v-if="rows.length > 0"
+                :paginator="expenses"
+                label="gastos"
+                @page="(p) => applyFilters({ page: p })"
+                @per-page="(n) => applyFilters({ per_page: n, page: 1 })"
+            />
         </div>
 
         <!-- Attachment preview lightbox -->

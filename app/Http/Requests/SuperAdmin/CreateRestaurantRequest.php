@@ -16,7 +16,6 @@ class CreateRestaurantRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:restaurants,slug', 'regex:/^[a-z0-9-]+$/'],
             'admin_name' => ['required', 'string', 'max:255'],
             'admin_email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
@@ -32,8 +31,6 @@ class CreateRestaurantRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'slug.regex' => 'El slug solo puede contener letras minúsculas, números y guiones.',
-            'slug.unique' => 'Este slug ya está en uso.',
             'admin_email.unique' => 'Este correo ya está registrado.',
             'orders_limit.required_if' => 'El límite de pedidos es obligatorio en modo manual.',
             'max_branches.required_if' => 'El máximo de sucursales es obligatorio en modo manual.',

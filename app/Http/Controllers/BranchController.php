@@ -101,7 +101,18 @@ class BranchController extends Controller
             return redirect()->route('branches.index')->with('error', 'No puedes eliminar la última sucursal activa.');
         }
 
-        $branch->delete();
+        if (\App\Models\Expense::where('branch_id', $branch->id)->exists()) {
+            return redirect()->route('branches.index')->with('error', 'No puedes eliminar una sucursal con gastos registrados. Desactívala en su lugar.');
+        }
+
+        try {
+            $branch->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() === '23503') {
+                return redirect()->route('branches.index')->with('error', 'No se puede eliminar esta sucursal porque tiene registros asociados.');
+            }
+            throw $e;
+        }
 
         return redirect()->route('branches.index')->with('success', 'Sucursal eliminada correctamente.');
     }

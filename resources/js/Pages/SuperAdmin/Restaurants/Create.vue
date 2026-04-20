@@ -4,7 +4,6 @@ import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
 
 const form = useForm({
     name: '',
-    slug: '',
     admin_name: '',
     admin_email: '',
     password: '',
@@ -15,16 +14,6 @@ const form = useForm({
     orders_limit_start: null,
     orders_limit_end: null,
 })
-
-function generateSlug() {
-    form.slug = form.name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-')
-}
 
 function submit() {
     form.post(route('super.restaurants.store'))
@@ -52,26 +41,11 @@ function submit() {
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del restaurante</label>
                                 <input
                                     v-model="form.name"
-                                    @input="generateSlug"
                                     type="text"
                                     placeholder="El Fogón del Norte"
                                     class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
                                 />
                                 <p v-if="form.errors.name" class="text-xs text-red-500 mt-1">{{ form.errors.name }}</p>
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Slug (URL amigable)</label>
-                                <div class="flex items-center">
-                                    <span class="inline-flex items-center px-3 py-2.5 border border-r-0 border-gray-200 rounded-l-xl bg-gray-50 text-sm text-gray-500">pideaqui.com/</span>
-                                    <input
-                                        v-model="form.slug"
-                                        type="text"
-                                        placeholder="el-fogon-del-norte"
-                                        class="flex-1 border border-gray-200 rounded-r-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                    />
-                                </div>
-                                <p v-if="form.errors.slug" class="text-xs text-red-500 mt-1">{{ form.errors.slug }}</p>
                             </div>
                         </div>
                     </div>

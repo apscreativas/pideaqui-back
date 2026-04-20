@@ -54,7 +54,9 @@ function submit() {
                             type="text"
                             placeholder="Ej: Av. Reforma 123, Centro Histórico, CDMX"
                             class="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                            :class="{ 'border-red-400': form.errors.address }"
                         />
+                        <p v-if="form.errors.address" class="mt-1 text-xs text-red-500">{{ form.errors.address }}</p>
                     </div>
 
                     <!-- WhatsApp -->

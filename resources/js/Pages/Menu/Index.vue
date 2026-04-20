@@ -299,7 +299,10 @@ function onProdDragEnd() {
                         <img
                             v-if="category.image_path"
                             :src="category.image_url"
-                            class="w-10 h-10 rounded-xl object-cover shrink-0"
+                            :alt="category.name"
+                            class="w-10 h-10 rounded-xl object-cover object-center shrink-0 border border-gray-100"
+                            style="aspect-ratio: 1 / 1"
+                            loading="lazy"
                         />
                         <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0" v-else>
                             <span class="material-symbols-outlined text-[#FF5722]" style="font-variation-settings:'FILL' 1">category</span>

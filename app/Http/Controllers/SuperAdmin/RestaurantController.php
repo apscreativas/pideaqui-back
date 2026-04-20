@@ -60,6 +60,7 @@ class RestaurantController extends Controller
     {
         $data = $request->validated();
         $isManual = ($data['billing_mode'] ?? 'grace') === 'manual';
+        $data['slug'] = $this->generateUniqueSlug($data['name']);
 
         $restaurant = DB::transaction(function () use ($request, $data, $isManual): Restaurant {
             if ($isManual) {
@@ -348,5 +349,24 @@ class RestaurantController extends Controller
         $admin->update(['password' => $request->validated('password')]);
 
         return back()->with('success', 'Contraseña del administrador actualizada.');
+    }
+
+    private function generateUniqueSlug(string $name): string
+    {
+        $base = Str::slug($name);
+
+        if ($base === '') {
+            $base = 'restaurante';
+        }
+
+        $slug = $base;
+        $suffix = 2;
+
+        while (Restaurant::query()->withoutGlobalScope(TenantScope::class)->where('slug', $slug)->exists()) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 }

@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\ModifierGroupTemplate;
 use App\Models\Product;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -108,11 +109,19 @@ class ProductController extends Controller
     {
         $this->authorize('delete', $product);
 
-        if ($product->image_path) {
-            Storage::disk(config('filesystems.media_disk', 'public'))->delete($product->image_path);
-        }
+        try {
+            $imagePath = $product->image_path;
+            $product->delete();
 
-        $product->delete();
+            if ($imagePath) {
+                Storage::disk(config('filesystems.media_disk', 'public'))->delete($imagePath);
+            }
+        } catch (QueryException $e) {
+            if ($e->getCode() === '23503') {
+                return redirect()->route('menu.index')->with('error', 'No se puede eliminar el producto porque tiene registros asociados.');
+            }
+            throw $e;
+        }
 
         return redirect()->route('menu.index')->with('success', 'Producto eliminado correctamente.');
     }

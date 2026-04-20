@@ -16,13 +16,30 @@ class CouponController extends Controller
     {
         $this->authorize('viewAny', Coupon::class);
 
-        $coupons = Coupon::query()
-            ->withCount('uses')
-            ->orderByDesc('created_at')
-            ->get();
+        $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'in:20,50,100'],
+        ]);
+
+        $perPage = (int) $request->input('per_page', 20);
+
+        $baseQuery = Coupon::query()->withCount('uses');
+
+        // Stats on the full collection (not the current page).
+        $allForStats = (clone $baseQuery)->get(['id', 'is_active', 'ends_at']);
+        $now = now();
+        $stats = [
+            'total' => $allForStats->count(),
+            'active' => $allForStats->filter(fn ($c) => $c->is_active && (! $c->ends_at || $c->ends_at >= $now))->count(),
+            'expired' => $allForStats->filter(fn ($c) => $c->ends_at && $c->ends_at < $now)->count(),
+        ];
+
+        $coupons = $baseQuery->orderByDesc('created_at')->paginate($perPage)->withQueryString();
 
         return Inertia::render('Coupons/Index', [
             'coupons' => $coupons,
+            'stats' => $stats,
+            'filters' => ['per_page' => $perPage],
         ]);
     }
 

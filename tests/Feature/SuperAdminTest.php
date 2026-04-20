@@ -118,7 +118,6 @@ class SuperAdminTest extends TestCase
 
         $response = $this->actingAs($superAdmin, 'superadmin')->post(route('super.restaurants.store'), [
             'name' => 'Tacos El Rey',
-            'slug' => 'tacos-el-rey',
             'admin_name' => 'Carlos López',
             'admin_email' => 'carlos@tacosrey.com',
             'password' => 'password123',
@@ -128,7 +127,7 @@ class SuperAdminTest extends TestCase
 
         $response->assertRedirect();
 
-        $restaurant = Restaurant::where('slug', 'tacos-el-rey')->firstOrFail();
+        $restaurant = Restaurant::where('name', 'Tacos El Rey')->firstOrFail();
         $this->assertDatabaseHas('restaurants', [
             'name' => 'Tacos El Rey',
             'slug' => 'tacos-el-rey',
@@ -149,25 +148,26 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseHas('payment_methods', ['restaurant_id' => $restaurant->id, 'type' => 'transfer', 'is_active' => false]);
     }
 
-    public function test_create_restaurant_fails_with_duplicate_slug(): void
+    public function test_auto_generates_unique_slug_when_name_collides(): void
     {
         $superAdmin = $this->createSuperAdmin();
-        Restaurant::factory()->create(['slug' => 'existing-slug']);
+        Restaurant::factory()->create(['name' => 'Tacos El Rey', 'slug' => 'tacos-el-rey']);
 
         $response = $this->actingAs($superAdmin, 'superadmin')->post(route('super.restaurants.store'), [
-            'name' => 'Test',
-            'slug' => 'existing-slug',
+            'name' => 'Tacos El Rey',
             'admin_name' => 'Admin',
             'admin_email' => 'admin@test.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'billing_mode' => 'manual',
             'orders_limit' => 500,
             'orders_limit_start' => now()->startOfMonth()->toDateString(),
             'orders_limit_end' => now()->endOfMonth()->toDateString(),
             'max_branches' => 3,
         ]);
 
-        $response->assertSessionHasErrors('slug');
+        $response->assertRedirect();
+        $this->assertDatabaseHas('restaurants', ['slug' => 'tacos-el-rey-2']);
     }
 
     public function test_create_restaurant_fails_with_duplicate_admin_email(): void
@@ -178,11 +178,11 @@ class SuperAdminTest extends TestCase
 
         $response = $this->actingAs($superAdmin, 'superadmin')->post(route('super.restaurants.store'), [
             'name' => 'Test',
-            'slug' => 'test-new',
             'admin_name' => 'Admin',
             'admin_email' => 'taken@test.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'billing_mode' => 'manual',
             'orders_limit' => 500,
             'orders_limit_start' => now()->startOfMonth()->toDateString(),
             'orders_limit_end' => now()->endOfMonth()->toDateString(),

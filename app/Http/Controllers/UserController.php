@@ -147,7 +147,29 @@ class UserController extends Controller
             abort(403);
         }
 
-        $user->delete();
+        // Guard against RESTRICT foreign keys. These tables preserve historical
+        // attribution; deleting a user referenced by them would throw an
+        // unhandled QueryException (23503) and surface as a generic 500.
+        if (\App\Models\PosSale::where('cashier_user_id', $user->id)->exists()) {
+            return redirect()->route('settings.users')->with('error', 'No puedes eliminar este usuario porque tiene ventas POS registradas. Desactívalo en su lugar.');
+        }
+
+        if (\App\Models\PosPayment::where('registered_by_user_id', $user->id)->exists()) {
+            return redirect()->route('settings.users')->with('error', 'No puedes eliminar este usuario porque tiene pagos POS registrados. Desactívalo en su lugar.');
+        }
+
+        if (\App\Models\Expense::where('created_by_user_id', $user->id)->exists()) {
+            return redirect()->route('settings.users')->with('error', 'No puedes eliminar este usuario porque tiene gastos registrados. Desactívalo en su lugar.');
+        }
+
+        try {
+            $user->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() === '23503') {
+                return redirect()->route('settings.users')->with('error', 'No se puede eliminar este usuario porque tiene registros asociados.');
+            }
+            throw $e;
+        }
 
         return redirect()->route('settings.users')->with('success', 'Usuario eliminado correctamente.');
     }

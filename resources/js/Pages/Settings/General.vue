@@ -17,9 +17,6 @@ const form = useForm({
     _method: 'put',
     name: props.restaurant.name ?? '',
     logo: null,
-    instagram: props.restaurant.instagram ?? '',
-    facebook: props.restaurant.facebook ?? '',
-    tiktok: props.restaurant.tiktok ?? '',
     notify_new_orders: props.restaurant.notify_new_orders ?? true,
 })
 
@@ -89,41 +86,6 @@ function onLogoChange(e) {
                         />
                         <p class="text-xs text-gray-400 mt-1.5">JPG, PNG, GIF o WebP · Máximo 2 MB · Proporción 1:1 recomendada</p>
                         <p v-if="form.errors.logo" class="text-xs text-red-500 mt-1">{{ form.errors.logo }}</p>
-                    </div>
-
-                    <!-- Redes sociales -->
-                    <div class="border-t border-gray-100 pt-5">
-                        <p class="text-sm font-semibold text-gray-700 mb-4">Redes sociales (opcional)</p>
-
-                        <div class="space-y-3">
-                            <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400 w-6">photo_camera</span>
-                                <input
-                                    v-model="form.instagram"
-                                    type="text"
-                                    placeholder="instagram.com/turestaurante"
-                                    class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400 w-6">groups</span>
-                                <input
-                                    v-model="form.facebook"
-                                    type="text"
-                                    placeholder="facebook.com/turestaurante"
-                                    class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400 w-6">music_note</span>
-                                <input
-                                    v-model="form.tiktok"
-                                    type="text"
-                                    placeholder="tiktok.com/@turestaurante"
-                                    class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
-                                />
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Notificaciones -->

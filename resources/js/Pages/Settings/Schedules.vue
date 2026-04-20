@@ -173,38 +173,40 @@ function addCommonHolidays() {
                     <div
                         v-for="(schedule, index) in form.schedules"
                         :key="schedule.day_of_week"
-                        class="px-6 py-4 flex items-center gap-4"
+                        class="px-6 py-4"
                     >
-                        <span class="w-28 text-sm font-semibold text-gray-700 shrink-0">
-                            {{ DAY_NAMES[schedule.day_of_week] }}
-                        </span>
-                        <ToggleSwitch
-                            :model-value="!schedule.is_closed"
-                            @update:model-value="schedule.is_closed = !$event"
-                        />
-                        <span
-                            class="text-xs font-medium w-16 shrink-0"
-                            :class="!schedule.is_closed ? 'text-green-600' : 'text-gray-400'"
-                        >
-                            {{ !schedule.is_closed ? 'Abierto' : 'Cerrado' }}
-                        </span>
-                        <template v-if="!schedule.is_closed">
-                            <div class="w-40">
-                                <TimePicker v-model="schedule.opens_at" placeholder="Apertura" />
-                            </div>
-                            <span class="text-gray-400 text-sm">a</span>
-                            <div class="w-40">
-                                <TimePicker v-model="schedule.closes_at" placeholder="Cierre" />
-                            </div>
-                        </template>
-                        <template v-else>
-                            <span class="text-sm text-gray-400 italic">Sin horario</span>
-                        </template>
+                        <div class="flex items-center gap-4">
+                            <span class="w-28 text-sm font-semibold text-gray-700 shrink-0">
+                                {{ DAY_NAMES[schedule.day_of_week] }}
+                            </span>
+                            <ToggleSwitch
+                                :model-value="!schedule.is_closed"
+                                @update:model-value="schedule.is_closed = !$event"
+                            />
+                            <span
+                                class="text-xs font-medium w-16 shrink-0"
+                                :class="!schedule.is_closed ? 'text-green-600' : 'text-gray-400'"
+                            >
+                                {{ !schedule.is_closed ? 'Abierto' : 'Cerrado' }}
+                            </span>
+                            <template v-if="!schedule.is_closed">
+                                <div class="w-40">
+                                    <TimePicker v-model="schedule.opens_at" placeholder="Apertura" :has-error="!!form.errors[`schedules.${index}.opens_at`]" />
+                                </div>
+                                <span class="text-gray-400 text-sm">a</span>
+                                <div class="w-40">
+                                    <TimePicker v-model="schedule.closes_at" placeholder="Cierre" :has-error="!!form.errors[`schedules.${index}.closes_at`]" />
+                                </div>
+                            </template>
+                            <template v-else>
+                                <span class="text-sm text-gray-400 italic">Sin horario</span>
+                            </template>
+                        </div>
+                        <div v-if="form.errors[`schedules.${index}.opens_at`] || form.errors[`schedules.${index}.closes_at`]" class="mt-2 ml-28 text-xs text-red-500 space-y-0.5">
+                            <p v-if="form.errors[`schedules.${index}.opens_at`]">{{ form.errors[`schedules.${index}.opens_at`] }}</p>
+                            <p v-if="form.errors[`schedules.${index}.closes_at`]">{{ form.errors[`schedules.${index}.closes_at`] }}</p>
+                        </div>
                     </div>
-                </div>
-
-                <div v-if="form.hasErrors" class="px-6 py-3 bg-red-50 border-t border-red-100">
-                    <p class="text-sm text-red-600">Revisa los horarios ingresados. El formato debe ser HH:MM.</p>
                 </div>
 
                 <div class="px-6 py-4 border-t border-gray-100 flex justify-end">
@@ -348,18 +350,21 @@ function addCommonHolidays() {
                                     Horario especial
                                 </button>
                             </div>
+                            <p v-if="sdForm.errors.type" class="mt-1 text-xs text-red-500">{{ sdForm.errors.type }}</p>
                         </div>
 
                         <!-- Hours (only for special) -->
                         <div v-if="sdForm.type === 'special'" class="flex items-center gap-3">
                             <div class="flex-1">
                                 <label class="block text-xs font-medium text-gray-500 mb-1">Apertura</label>
-                                <TimePicker v-model="sdForm.opens_at" />
+                                <TimePicker v-model="sdForm.opens_at" :has-error="!!sdForm.errors.opens_at" />
+                                <p v-if="sdForm.errors.opens_at" class="mt-1 text-xs text-red-500">{{ sdForm.errors.opens_at }}</p>
                             </div>
                             <span class="text-gray-400 text-sm mt-4">a</span>
                             <div class="flex-1">
                                 <label class="block text-xs font-medium text-gray-500 mb-1">Cierre</label>
-                                <TimePicker v-model="sdForm.closes_at" />
+                                <TimePicker v-model="sdForm.closes_at" :has-error="!!sdForm.errors.closes_at" />
+                                <p v-if="sdForm.errors.closes_at" class="mt-1 text-xs text-red-500">{{ sdForm.errors.closes_at }}</p>
                             </div>
                         </div>
 
@@ -371,18 +376,23 @@ function addCommonHolidays() {
                                 type="text"
                                 placeholder="Ej: Navidad, Inventario, Evento privado"
                                 class="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/30 focus:border-[#FF5722] transition-colors"
+                                :class="{ 'border-red-400': sdForm.errors.label }"
                             />
+                            <p v-if="sdForm.errors.label" class="mt-1 text-xs text-red-500">{{ sdForm.errors.label }}</p>
                         </div>
 
                         <!-- Recurring -->
-                        <label class="flex items-center gap-2.5 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                v-model="sdForm.is_recurring"
-                                class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
-                            />
-                            <span class="text-sm text-gray-700">Se repite cada año</span>
-                        </label>
+                        <div>
+                            <label class="flex items-center gap-2.5 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    v-model="sdForm.is_recurring"
+                                    class="rounded border-gray-300 text-[#FF5722] focus:ring-[#FF5722]/30"
+                                />
+                                <span class="text-sm text-gray-700">Se repite cada año</span>
+                            </label>
+                            <p v-if="sdForm.errors.is_recurring" class="mt-1 text-xs text-red-500">{{ sdForm.errors.is_recurring }}</p>
+                        </div>
                     </div>
 
                     <div class="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">

@@ -122,7 +122,9 @@ function save(pm) {
                                 type="text"
                                 placeholder="Número de teléfono o alias"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50"
+                                :class="{ 'border-red-400': forms[pm.id].errors.alias }"
                             />
+                            <p v-if="forms[pm.id].errors.alias" class="text-xs text-red-500 mt-1">{{ forms[pm.id].errors.alias }}</p>
                         </div>
                     </div>
 

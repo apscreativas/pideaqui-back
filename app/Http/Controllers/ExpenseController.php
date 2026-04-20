@@ -30,12 +30,15 @@ class ExpenseController extends Controller
             'subcategory_id' => ['nullable', 'integer'],
             'min_amount' => ['nullable', 'numeric', 'min:0'],
             'max_amount' => ['nullable', 'numeric', 'min:0'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'in:20,50,100'],
         ]);
 
         $restaurantId = $request->user()->restaurant_id;
 
         $from = $request->date_from ? Carbon::parse($request->date_from)->toDateString() : now()->startOfMonth()->toDateString();
         $to = $request->date_to ? Carbon::parse($request->date_to)->toDateString() : now()->toDateString();
+        $perPage = (int) $request->input('per_page', 20);
 
         $query = Expense::query()
             ->with(['category:id,name', 'subcategory:id,name,expense_category_id', 'branch:id,name', 'creator:id,name', 'attachments'])
@@ -49,33 +52,43 @@ class ExpenseController extends Controller
             ->orderByDesc('expense_date')
             ->orderByDesc('id');
 
-        $expenses = $query->get();
-
         $categories = ExpenseCategory::query()
             ->where('restaurant_id', $restaurantId)
             ->with(['subcategories' => fn ($q) => $q->orderBy('sort_order')])
             ->orderBy('sort_order')->orderBy('name')
             ->get();
 
+        // Aggregate KPIs computed server-side on the FULL result set, not the
+        // current page — so totals stay consistent when the user paginates.
+        // `reorder()` clears the ORDER BY from the base query so GROUP BY
+        // aggregates don't trip Postgres's column-must-appear rule.
+        $aggregate = (clone $query)->getQuery()->reorder()
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(amount), 0) as total, COALESCE(AVG(amount), 0) as avg')
+            ->first();
+
+        $byCategoryRows = (clone $query)->getQuery()->reorder()
+            ->selectRaw('expense_category_id, COUNT(*) as count, COALESCE(SUM(amount), 0) as total')
+            ->groupBy('expense_category_id')
+            ->orderByDesc('total')
+            ->get();
+
+        $totals = [
+            'count' => (int) $aggregate->count,
+            'total' => round((float) $aggregate->total, 2),
+            'avg' => (int) $aggregate->count > 0 ? round((float) $aggregate->avg, 2) : 0,
+            'by_category' => $byCategoryRows->map(fn ($r) => [
+                'name' => $categories->firstWhere('id', $r->expense_category_id)?->name ?? '—',
+                'count' => (int) $r->count,
+                'total' => round((float) $r->total, 2),
+            ])->values(),
+        ];
+
+        $expenses = $query->paginate($perPage)->withQueryString();
+
         $branches = Branch::query()
             ->where('restaurant_id', $restaurantId)
             ->orderBy('name')
             ->get(['id', 'name', 'is_active']);
-
-        $totals = [
-            'count' => $expenses->count(),
-            'total' => round((float) $expenses->sum('amount'), 2),
-            'avg' => $expenses->count() > 0 ? round((float) $expenses->avg('amount'), 2) : 0,
-            'by_category' => $expenses->groupBy('expense_category_id')->map(function ($group) use ($categories) {
-                $cat = $categories->firstWhere('id', $group->first()->expense_category_id);
-
-                return [
-                    'name' => $cat?->name ?? '—',
-                    'count' => $group->count(),
-                    'total' => round((float) $group->sum('amount'), 2),
-                ];
-            })->values(),
-        ];
 
         return Inertia::render('Expenses/Index', [
             'expenses' => $expenses,
@@ -89,6 +102,7 @@ class ExpenseController extends Controller
                 'subcategory_id' => $request->subcategory_id,
                 'min_amount' => $request->min_amount,
                 'max_amount' => $request->max_amount,
+                'per_page' => $perPage,
             ],
             'totals' => $totals,
         ]);

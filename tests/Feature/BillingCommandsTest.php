@@ -273,7 +273,6 @@ class BillingCommandsTest extends TestCase
         $this->actingAs($superAdmin, 'superadmin')
             ->post(route('super.restaurants.store'), [
                 'name' => 'Test Billing Restaurant',
-                'slug' => 'test-billing',
                 'admin_name' => 'Admin',
                 'admin_email' => 'admin@test.com',
                 'password' => 'password123',
@@ -282,7 +281,7 @@ class BillingCommandsTest extends TestCase
             ])
             ->assertRedirect();
 
-        $restaurant = Restaurant::query()->where('slug', 'test-billing')->firstOrFail();
+        $restaurant = Restaurant::query()->where('name', 'Test Billing Restaurant')->firstOrFail();
         $this->assertEquals('grace_period', $restaurant->status);
         $this->assertNotNull($restaurant->plan_id);
         $this->assertNotNull($restaurant->grace_period_ends_at);

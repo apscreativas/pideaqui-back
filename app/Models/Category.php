@@ -48,6 +48,20 @@ class Category extends Model
         );
     }
 
+    protected function availableFrom(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value ? substr($value, 0, 5) : null,
+        );
+    }
+
+    protected function availableUntil(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value ? substr($value, 0, 5) : null,
+        );
+    }
+
     public function restaurant(): BelongsTo
     {
         return $this->belongsTo(Restaurant::class);

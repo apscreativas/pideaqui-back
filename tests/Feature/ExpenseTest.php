@@ -406,6 +406,6 @@ class ExpenseTest extends TestCase
 
         $response = $this->withoutVite()->actingAs($admin)->get(route('expenses.index'));
 
-        $response->assertInertia(fn ($p) => $p->has('expenses', 1));
+        $response->assertInertia(fn ($p) => $p->has('expenses.data', 1));
     }
 }

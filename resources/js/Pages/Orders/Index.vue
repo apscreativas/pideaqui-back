@@ -258,6 +258,62 @@ function isInCurrentDateRange(createdAt) {
 
 let echoChannel = null
 
+// --- Sound alert on new orders ---
+const SOUND_PREF_KEY = 'orders_sound_enabled'
+const soundEnabled = ref(false)
+
+function playNewOrderSound() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextClass) { return }
+    try {
+        const ctx = new AudioContextClass()
+        // "Campana de restaurante": dos osciladores a intervalo de quinta
+        // producen timbre metálico tipo bell. Filtro low-pass le quita aspereza.
+        const strike = (startOffset) => {
+            const t0 = ctx.currentTime + startOffset
+            const master = ctx.createGain()
+            const filter = ctx.createBiquadFilter()
+            filter.type = 'lowpass'
+            filter.frequency.value = 3200
+            filter.Q.value = 0.8
+            master.connect(filter)
+            filter.connect(ctx.destination)
+            master.gain.setValueAtTime(0.0001, t0)
+            master.gain.exponentialRampToValueAtTime(0.7, t0 + 0.008)
+            master.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.75)
+
+            const makeOsc = (freq, type, amp) => {
+                const osc = ctx.createOscillator()
+                const g = ctx.createGain()
+                osc.type = type
+                osc.frequency.value = freq
+                g.gain.value = amp
+                osc.connect(g)
+                g.connect(master)
+                osc.start(t0)
+                osc.stop(t0 + 0.8)
+            }
+            makeOsc(988, 'triangle', 1.0)   // B5 fundamental
+            makeOsc(1480, 'sine', 0.55)     // F#6 (quinta) → armonía tipo campana
+            makeOsc(2960, 'sine', 0.15)     // armonía alta breve para "golpe" inicial
+        }
+        strike(0)
+        strike(0.35)
+        setTimeout(() => ctx.close().catch(() => {}), 1500)
+    } catch (_) {
+        // audio not available; silent fallback
+    }
+}
+
+function toggleSound() {
+    soundEnabled.value = !soundEnabled.value
+    try { localStorage.setItem(SOUND_PREF_KEY, soundEnabled.value ? '1' : '0') } catch (_) {}
+    if (soundEnabled.value) {
+        // Play once on activation — also unlocks browser autoplay policy.
+        playNewOrderSound()
+    }
+}
+
 // Branch IDs this user can see (from server-filtered branches prop).
 const allowedBranchIdSet = new Set(props.branches.map((b) => b.id))
 
@@ -277,6 +333,8 @@ function isVisibleEvent(order) {
 }
 
 onMounted(() => {
+    try { soundEnabled.value = localStorage.getItem(SOUND_PREF_KEY) === '1' } catch (_) {}
+
     const echo = window.getEcho?.()
     if (!restaurantId || !echo) { return }
 
@@ -286,6 +344,7 @@ onMounted(() => {
             const exists = localOrders.value.received?.some((o) => o.id === e.order.id)
             if (!exists) {
                 localOrders.value.received.unshift(e.order)
+                if (soundEnabled.value) { playNewOrderSound() }
             }
         })
         .listen('OrderStatusChanged', (e) => {
@@ -347,6 +406,20 @@ onUnmounted(() => {
             </div>
 
             <div class="flex items-center gap-3">
+                <!-- Sound alert toggle -->
+                <button
+                    type="button"
+                    @click="toggleSound"
+                    class="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border transition-colors"
+                    :class="soundEnabled
+                        ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                    :title="soundEnabled ? 'Sonido activado — click para silenciar' : 'Sonido desactivado — click para activar'"
+                >
+                    <span class="material-symbols-outlined text-lg" aria-hidden="true">{{ soundEnabled ? 'notifications_active' : 'notifications_off' }}</span>
+                    {{ soundEnabled ? 'Sonido ON' : 'Sonido OFF' }}
+                </button>
+
                 <!-- New manual order button -->
                 <button
                     type="button"

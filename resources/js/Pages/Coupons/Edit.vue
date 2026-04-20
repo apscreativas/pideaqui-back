@@ -89,6 +89,7 @@ function submit() {
                                 <span class="text-sm font-medium" :class="form.discount_type === 'percentage' ? 'text-[#FF5722]' : 'text-gray-600'">Porcentaje (%)</span>
                             </label>
                         </div>
+                        <p v-if="form.errors.discount_type" class="text-red-500 text-xs mt-1">{{ form.errors.discount_type }}</p>
                     </div>
 
                     <!-- Discount value -->

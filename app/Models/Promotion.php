@@ -55,6 +55,20 @@ class Promotion extends Model
         );
     }
 
+    protected function startsAt(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value ? substr($value, 0, 5) : null,
+        );
+    }
+
+    protected function endsAt(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value ? substr($value, 0, 5) : null,
+        );
+    }
+
     public function restaurant(): BelongsTo
     {
         return $this->belongsTo(Restaurant::class);

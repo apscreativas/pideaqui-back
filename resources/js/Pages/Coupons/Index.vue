@@ -1,20 +1,26 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
+import Pagination from '@/Components/Pagination.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 
 const props = defineProps({
-    coupons: { type: Array, default: () => [] },
+    coupons: { type: Object, required: true },
+    stats: { type: Object, default: () => ({ total: 0, active: 0, expired: 0 }) },
+    filters: { type: Object, default: () => ({ per_page: 20 }) },
 })
 
 const showDeleteModal = ref(false)
 const couponToDelete = ref(null)
 
-const stats = computed(() => ({
-    total: props.coupons.length,
-    active: props.coupons.filter((c) => c.is_active && !isExpired(c)).length,
-    expired: props.coupons.filter((c) => isExpired(c)).length,
-}))
+const rows = computed(() => props.coupons?.data ?? [])
+
+function navigate(params = {}) {
+    router.get(route('coupons.index'), {
+        per_page: props.filters.per_page,
+        ...params,
+    }, { preserveState: true, preserveScroll: true, replace: true })
+}
 
 function isExpired(coupon) {
     return coupon.ends_at && new Date(coupon.ends_at) < new Date()
@@ -108,7 +114,7 @@ function deleteCoupon() {
 
         <!-- Table -->
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div v-if="coupons.length === 0" class="px-6 py-12 text-center text-gray-400">
+            <div v-if="rows.length === 0" class="px-6 py-12 text-center text-gray-400">
                 <span class="material-symbols-outlined text-5xl mb-3 block">confirmation_number</span>
                 <p class="text-lg font-medium">No hay cupones aún</p>
                 <p class="text-sm mt-1">Crea tu primer cupón de descuento.</p>
@@ -128,7 +134,7 @@ function deleteCoupon() {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                    <tr v-for="coupon in coupons" :key="coupon.id" class="hover:bg-gray-50/50 transition-colors">
+                    <tr v-for="coupon in rows" :key="coupon.id" class="hover:bg-gray-50/50 transition-colors">
                         <td class="px-6 py-4">
                             <span class="font-mono font-semibold text-sm text-gray-900 bg-gray-100 px-2 py-1 rounded-lg">
                                 {{ coupon.code }}
@@ -183,6 +189,14 @@ function deleteCoupon() {
                     </tr>
                 </tbody>
             </table>
+
+            <Pagination
+                v-if="rows.length > 0"
+                :paginator="coupons"
+                label="cupones"
+                @page="(p) => navigate({ page: p })"
+                @per-page="(n) => navigate({ per_page: n, page: 1 })"
+            />
         </div>
 
         <!-- Delete modal -->
