@@ -21,6 +21,7 @@ const props = defineProps({
 })
 
 const imagePreview = ref(null)
+const sizeWarning = ref(null)
 
 const form = useForm({
     _method: 'put',
@@ -65,6 +66,7 @@ function onImageChange(e) {
     const file = e.target.files[0]
     if (!file) { return }
     form.clearErrors('default_product_image')
+    sizeWarning.value = null
 
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
         form.setError('default_product_image', `La imagen no debe pesar mas de ${IMAGE_MAX_MB} MB. Tu archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB.`)
@@ -75,12 +77,22 @@ function onImageChange(e) {
     form.default_product_image = file
     form.remove_default_image = false
     imagePreview.value = URL.createObjectURL(file)
+
+    // Non-blocking advisory when the image isn't square.
+    const probe = new Image()
+    probe.onload = () => {
+        if (probe.width !== probe.height) {
+            sizeWarning.value = `La imagen es ${probe.width}×${probe.height} px. Te recomendamos subirla cuadrada (1:1) para mejor visualización.`
+        }
+    }
+    probe.src = URL.createObjectURL(file)
 }
 
 function removeImage() {
     form.default_product_image = null
     form.remove_default_image = true
     imagePreview.value = null
+    sizeWarning.value = null
 }
 
 function resetColors() {
@@ -233,8 +245,12 @@ function submit() {
                                 class="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#FF5722]/10 file:text-[#FF5722] hover:file:bg-[#FF5722]/20"
                                 @change="onImageChange"
                             />
-                            <p class="text-xs text-gray-400 mt-1.5">JPG, PNG, GIF o WebP · Maximo 2 MB</p>
+                            <div class="mt-1.5 space-y-0.5">
+                                <p class="text-xs text-gray-400">Imagen cuadrada (1:1) · Ideal 1024×1024 px</p>
+                                <p class="text-xs text-gray-400">JPG, PNG o WebP · Máximo 2 MB</p>
+                            </div>
                             <p v-if="form.errors.default_product_image" class="text-xs text-red-500 mt-1">{{ form.errors.default_product_image }}</p>
+                            <p v-if="sizeWarning && !form.errors.default_product_image" class="text-xs text-amber-600 mt-1">{{ sizeWarning }}</p>
                         </fieldset>
 
                         <!-- Submit -->

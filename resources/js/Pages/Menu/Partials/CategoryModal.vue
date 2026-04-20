@@ -15,6 +15,7 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const imagePreview = ref(null)
+const sizeWarning = ref(null)
 const scheduleEnabled = ref(false)
 
 const DAY_LABELS = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S']
@@ -92,6 +93,7 @@ function handleImageChange(event) {
     const file = event.target.files[0]
     if (!file) { return }
     form.clearErrors('image')
+    sizeWarning.value = null
 
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
         form.setError('image', `La imagen no debe pesar más de ${IMAGE_MAX_MB} MB. Tu archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB.`)
@@ -101,6 +103,17 @@ function handleImageChange(event) {
 
     form.image = file
     imagePreview.value = URL.createObjectURL(file)
+
+    // Non-blocking advisory when the image isn't square. The backend
+    // (CategoryImageProcessor) center-crops to 512×512 WebP, so uploading a
+    // rectangular image still works, we just tell the user what will happen.
+    const probe = new Image()
+    probe.onload = () => {
+        if (probe.width !== probe.height) {
+            sizeWarning.value = `La imagen es ${probe.width}×${probe.height} px. Se recortará al centro para quedar cuadrada.`
+        }
+    }
+    probe.src = imagePreview.value
 }
 
 function submit() {
@@ -181,10 +194,14 @@ function submit() {
                                     <span class="material-symbols-outlined text-[#FF5722] text-3xl mb-1" style="font-variation-settings:'FILL' 1">add_photo_alternate</span>
                                     <p class="text-sm font-medium text-gray-700">Sube una imagen</p>
                                 </div>
-                                <p class="text-xs text-gray-400 mt-1">JPG, PNG, GIF o WebP · Máximo 5 MB</p>
+                                <div class="mt-1 space-y-0.5">
+                                    <p class="text-xs text-gray-400">Imagen cuadrada (1:1) · Ideal 1024×1024 px</p>
+                                    <p class="text-xs text-gray-400">JPG, PNG o WebP · Máximo 5 MB</p>
+                                </div>
                                 <input ref="imageInput" type="file" :accept="IMAGE_ACCEPT" class="hidden" @change="handleImageChange" />
                             </div>
                             <p v-if="form.errors.image" class="mt-1 text-xs text-red-500">{{ form.errors.image }}</p>
+                            <p v-if="sizeWarning && !form.errors.image" class="mt-1 text-xs text-amber-600">{{ sizeWarning }}</p>
                         </div>
 
                         <!-- Estado -->

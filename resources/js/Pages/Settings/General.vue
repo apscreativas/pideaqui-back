@@ -84,7 +84,10 @@ function onLogoChange(e) {
                             class="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#FF5722]/10 file:text-[#FF5722] hover:file:bg-[#FF5722]/20"
                             @change="onLogoChange"
                         />
-                        <p class="text-xs text-gray-400 mt-1.5">JPG, PNG, GIF o WebP · Máximo 2 MB · Proporción 1:1 recomendada</p>
+                        <div class="mt-1.5 space-y-0.5">
+                            <p class="text-xs text-gray-400">Ideal 1024×1024 px · Proporción 1:1 recomendada</p>
+                            <p class="text-xs text-gray-400">JPG, PNG o WebP · Máximo 2 MB</p>
+                        </div>
                         <p v-if="form.errors.logo" class="text-xs text-red-500 mt-1">{{ form.errors.logo }}</p>
                     </div>
 

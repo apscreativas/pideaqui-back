@@ -12,6 +12,7 @@ const props = defineProps({
 const DAY_LABELS = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S']
 
 const imagePreview = ref(null)
+const sizeWarning = ref(null)
 const showCatalogPicker = ref(false)
 const linkedTemplateIds = ref([])
 
@@ -70,6 +71,7 @@ function handleImageChange(event) {
     const file = event.target.files[0]
     if (!file) { return }
     form.clearErrors('image')
+    sizeWarning.value = null
 
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
         form.setError('image', `La imagen no debe pesar mas de ${IMAGE_MAX_MB} MB.`)
@@ -79,6 +81,15 @@ function handleImageChange(event) {
 
     form.image = file
     imagePreview.value = URL.createObjectURL(file)
+
+    // Non-blocking advisory when the image isn't square.
+    const probe = new Image()
+    probe.onload = () => {
+        if (probe.width !== probe.height) {
+            sizeWarning.value = `La imagen es ${probe.width}×${probe.height} px. Te recomendamos subirla cuadrada (1:1) para mejor visualización.`
+        }
+    }
+    probe.src = URL.createObjectURL(file)
 }
 
 function toggleDay(dayIndex) {
@@ -445,10 +456,14 @@ function submit() {
                             <span class="material-symbols-outlined text-gray-300 text-4xl mb-2" style="font-variation-settings:'FILL' 1">add_photo_alternate</span>
                             <p class="text-sm font-medium text-gray-600">Subir imagen</p>
                         </div>
-                        <p class="text-xs text-gray-400 mt-1">JPG, PNG, GIF o WebP · Max 5 MB</p>
+                        <div class="mt-1 space-y-0.5">
+                            <p class="text-xs text-gray-400">Imagen cuadrada (1:1) · Ideal 1024×1024 px</p>
+                            <p class="text-xs text-gray-400">JPG, PNG o WebP · Máximo 5 MB</p>
+                        </div>
                         <input ref="imageInput" type="file" :accept="IMAGE_ACCEPT" class="hidden" @change="handleImageChange" />
                     </div>
                     <p v-if="form.errors.image" class="mt-1 text-xs text-red-500">{{ form.errors.image }}</p>
+                    <p v-if="sizeWarning && !form.errors.image" class="mt-1 text-xs text-amber-600">{{ sizeWarning }}</p>
                 </div>
 
                 <!-- Horario -->

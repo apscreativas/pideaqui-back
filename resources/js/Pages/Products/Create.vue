@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const imagePreview = ref(null)
+const sizeWarning = ref(null)
 
 const showCatalogPicker = ref(false)
 const linkedTemplateIds = ref([])
@@ -52,6 +53,7 @@ function handleImageChange(event) {
     const file = event.target.files[0]
     if (!file) { return }
     form.clearErrors('image')
+    sizeWarning.value = null
 
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
         form.setError('image', `La imagen no debe pesar más de ${IMAGE_MAX_MB} MB. Tu archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB.`)
@@ -61,6 +63,18 @@ function handleImageChange(event) {
 
     form.image = file
     imagePreview.value = URL.createObjectURL(file)
+
+    // Non-blocking advisory when the image isn't square. Product images are
+    // stored as-is (no server-side crop), so a rectangular upload will be
+    // center-cropped visually via object-cover but stored deformed — worth
+    // telling the cashier to prefer a 1:1 source.
+    const probe = new Image()
+    probe.onload = () => {
+        if (probe.width !== probe.height) {
+            sizeWarning.value = `La imagen es ${probe.width}×${probe.height} px. Te recomendamos subirla cuadrada (1:1) para mejor visualización.`
+        }
+    }
+    probe.src = imagePreview.value
 }
 
 function addModifierGroup() {
@@ -434,12 +448,13 @@ function submit() {
                             <p class="text-xs text-gray-400 mt-1">Haz clic para seleccionar</p>
                         </div>
                         <div class="mt-2 space-y-0.5">
-                            <p class="text-xs text-gray-400">JPG, PNG, GIF o WebP · Máximo 2 MB</p>
-                            <p class="text-xs text-gray-400">Proporción 1:1 · Ideal 1200×1200 px</p>
+                            <p class="text-xs text-gray-400">Imagen cuadrada (1:1) · Ideal 1024×1024 px</p>
+                            <p class="text-xs text-gray-400">JPG, PNG o WebP · Máximo 2 MB</p>
                         </div>
                         <input ref="imageInput" type="file" :accept="IMAGE_ACCEPT" class="hidden" @change="handleImageChange" />
                     </div>
                     <p v-if="form.errors.image" class="mt-1 text-xs text-red-500">{{ form.errors.image }}</p>
+                    <p v-if="sizeWarning && !form.errors.image" class="mt-1 text-xs text-amber-600">{{ sizeWarning }}</p>
                 </div>
 
                 <!-- Organización -->
