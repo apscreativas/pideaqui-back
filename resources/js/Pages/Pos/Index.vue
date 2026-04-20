@@ -9,7 +9,7 @@ import CancelSaleModal from '@/Components/CancelSaleModal.vue'
 import PosTicket from '@/Components/Pos/PosTicket.vue'
 import Pagination from '@/Components/Pagination.vue'
 import SortableHeader from '@/Components/SortableHeader.vue'
-import '@/../css/print-ticket.css'
+import { printTicket } from '@/utils/printTicket'
 
 const props = defineProps({
     sales: Object, // LengthAwarePaginator: { data, current_page, last_page, per_page, total, from, to, links }
@@ -211,7 +211,7 @@ function reprint(sale, e) {
     printableSale.value = sale
     printRequested.value = true
     setTimeout(() => {
-        window.print()
+        printTicket()
         setTimeout(() => { printRequested.value = false }, 300)
     }, 100)
 }
@@ -220,7 +220,7 @@ function printFromConfirm() {
     showPostPayPrint.value = false
     printRequested.value = true
     setTimeout(() => {
-        window.print()
+        printTicket()
         setTimeout(() => { printRequested.value = false }, 300)
     }, 100)
 }
