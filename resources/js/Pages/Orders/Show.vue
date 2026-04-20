@@ -3,7 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import OrderTicket from '@/Components/OrderTicket.vue'
-import { printTicket } from '@/utils/printTicket'
+import '@/../css/print-ticket.css'
 
 const props = defineProps({
     order: Object,
@@ -150,6 +150,10 @@ function advanceStatus() {
     router.put(route('orders.advance-status', props.order.id), {}, {
         preserveScroll: true,
     })
+}
+
+function printTicket() {
+    window.print()
 }
 
 function whatsappHref(phone) {

@@ -6,7 +6,7 @@ import PosTicket from '@/Components/Pos/PosTicket.vue'
 import PaymentModal from '@/Components/Pos/PaymentModal.vue'
 import SaleStatusBadge from '@/Components/Pos/SaleStatusBadge.vue'
 import CancelSaleModal from '@/Components/CancelSaleModal.vue'
-import { printTicket } from '@/utils/printTicket'
+import '@/../css/print-ticket.css'
 
 const props = defineProps({
     sale: Object,
@@ -58,7 +58,7 @@ const printRequested = ref(false)
 function reprint() {
     printRequested.value = true
     setTimeout(() => {
-        printTicket()
+        window.print()
         setTimeout(() => { printRequested.value = false }, 300)
     }, 100)
 }
