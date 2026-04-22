@@ -1,5 +1,5 @@
 <script setup>
-import { Head, router } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import { computed } from 'vue'
 import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
