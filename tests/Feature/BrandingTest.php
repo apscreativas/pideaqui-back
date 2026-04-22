@@ -206,7 +206,6 @@ class BrandingTest extends TestCase
     public function test_api_restaurant_includes_branding_fields(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'primary_color' => '#222222',
             'secondary_color' => '#00FF00',
             'is_active' => true,
@@ -217,9 +216,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $response->assertJsonFragment([
@@ -232,7 +229,6 @@ class BrandingTest extends TestCase
     public function test_api_restaurant_returns_null_for_unset_branding(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'is_active' => true,
         ]);
         $restaurant->paymentMethods()->create([
@@ -241,9 +237,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $response->assertJsonPath('data.primary_color', null);
@@ -294,7 +288,6 @@ class BrandingTest extends TestCase
     public function test_api_resolves_text_color_from_dark_background(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'primary_color' => '#000000',
             'text_color' => null,
             'is_active' => true,
@@ -305,9 +298,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $response->assertJsonPath('data.text_color', 'light');
@@ -316,7 +307,6 @@ class BrandingTest extends TestCase
     public function test_api_resolves_text_color_from_light_background(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'primary_color' => '#FFFFFF',
             'text_color' => null,
             'is_active' => true,
@@ -327,9 +317,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $response->assertJsonPath('data.text_color', 'dark');
@@ -338,7 +326,6 @@ class BrandingTest extends TestCase
     public function test_api_returns_explicit_text_color_when_set(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'primary_color' => '#000000',
             'text_color' => 'dark',
             'is_active' => true,
@@ -349,9 +336,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         // Explicit value overrides auto-detection
@@ -361,7 +346,6 @@ class BrandingTest extends TestCase
     public function test_api_defaults_to_dark_when_no_primary_color(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-branding-token',
             'primary_color' => null,
             'text_color' => null,
             'is_active' => true,
@@ -372,9 +356,7 @@ class BrandingTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ])->getJson('/api/restaurant');
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $response->assertJsonPath('data.text_color', 'dark');

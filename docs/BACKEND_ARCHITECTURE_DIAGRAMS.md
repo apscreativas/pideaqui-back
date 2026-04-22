@@ -39,7 +39,7 @@ graph TB
             AUTH["auth (web guard)"]
             AUTHSA["auth:superadmin"]
             TENANT["EnsureTenantContext"]
-            TOKN["AuthenticateRestaurantToken"]
+            SLUG["ResolveTenantFromSlug"]
             THRT["throttle"]
         end
 
@@ -144,7 +144,6 @@ erDiagram
         string name
         string slug UK
         string logo_path
-        string access_token
         boolean is_active
         boolean allows_delivery
         boolean allows_pickup
@@ -377,25 +376,27 @@ graph LR
 
 ```mermaid
 graph TD
-    CLIENT["Client SPA<br/>(Vue 3)"] -->|"X-Restaurant-Token<br/>o Bearer Token"| MW
+    CLIENT["Client SPA universal<br/>(Vue 3, un solo bundle)"] -->|"URL /api/public/{slug}/*"| MW
 
-    subgraph MW["Middleware: AuthenticateRestaurantToken"]
+    subgraph MW["Middleware: ResolveTenantFromSlug (alias tenant.slug)"]
         direction TB
-        CHECK["Extraer token de header/bearer"]
-        FIND["Buscar Restaurant por access_token"]
-        ACTIVE["Verificar is_active = true"]
+        EXTRACT["Extraer {slug} del path"]
+        FIND["Restaurant::query()->where('slug', slug)->first()"]
+        GUARDS["404 si no existe<br/>410 si !canReceiveOrders()"]
         SET["request.attributes.restaurant = restaurant"]
-        CHECK --> FIND --> ACTIVE --> SET
+        EXTRACT --> FIND --> GUARDS --> SET
     end
 
     MW --> ROUTES
 
-    subgraph ROUTES["5 Endpoints de API"]
-        R1["GET /api/restaurant<br/>RestaurantController@show"]
-        R2["GET /api/menu<br/>MenuController@index"]
-        R3["GET /api/branches<br/>BranchController@index"]
-        R4["POST /api/delivery/calculate<br/>DeliveryController@calculate"]
-        R5["POST /api/orders<br/>OrderController@store<br/>+ throttle:30,1"]
+    subgraph ROUTES["6 Endpoints de API + 1 global (slug-check)"]
+        R1["GET /api/public/{slug}/restaurant<br/>RestaurantController@show<br/>throttle:120,1"]
+        R2["GET /api/public/{slug}/menu<br/>MenuController@index<br/>throttle:120,1"]
+        R3["GET /api/public/{slug}/branches<br/>BranchController@index<br/>throttle:120,1"]
+        R4["POST /api/public/{slug}/delivery/calculate<br/>DeliveryController@calculate<br/>throttle:30,1"]
+        R5["POST /api/public/{slug}/coupons/validate<br/>CouponController@validate<br/>throttle:20,1"]
+        R6["POST /api/public/{slug}/orders<br/>OrderController@store<br/>throttle:30,1"]
+        R7["GET /api/slug-check?slug=x<br/>SlugCheckController@check<br/>throttle:120,1 (sin tenant.slug)"]
     end
 
     subgraph Resources["API Resources (transformación)"]
@@ -403,7 +404,8 @@ graph TD
         RES2["MenuCategoryResource<br/>→ MenuProductResource<br/>  → ModifierGroupResource<br/>    → ModifierOptionResource"]
         RES3["BranchResource"]
         RES4["DeliveryCalculationResource"]
-        RES5["OrderConfirmationResource"]
+        RES5["CouponValidationResponse"]
+        RES6["OrderConfirmationResource"]
     end
 
     R1 --> RES1
@@ -411,13 +413,15 @@ graph TD
     R3 --> RES3
     R4 --> RES4
     R5 --> RES5
+    R6 --> RES6
 
     subgraph Hidden["Campos OCULTOS en API"]
         H1["production_cost ❌"]
-        H2["access_token ❌"]
         H3["bank details (solo transfer) ⚠️"]
     end
 ```
+
+> **Nota (Abr 2026):** El patrón legacy por header `X-Restaurant-Token` + columna `restaurants.access_token` fue removido completo. La migración `2026_04_22_122940_drop_access_token_from_restaurants_table.php` eliminó la columna; el middleware `AuthenticateRestaurantToken` y sus rutas `/api/*` sin prefijo fueron borrados.
 
 ---
 
@@ -435,8 +439,13 @@ graph LR
             SA_R_SH["GET /super/restaurants/{id}<br/>RestaurantController@show"]
             SA_R_LIM["PUT /super/restaurants/{id}/limits<br/>RestaurantController@updateLimits"]
             SA_R_TOG["PATCH /super/restaurants/{id}/toggle<br/>RestaurantController@toggleActive"]
-            SA_R_TK["POST /super/restaurants/{id}/regenerate-token<br/>RestaurantController@regenerateToken"]
+            SA_R_SLUG["PATCH /super/restaurants/{id}/slug<br/>RestaurantController@renameSlug"]
             SA_R_PW["PUT /super/restaurants/{id}/reset-password<br/>RestaurantController@resetAdminPassword"]
+            SA_R_VER["POST /super/restaurants/{id}/send-verification<br/>RestaurantController@sendVerification"]
+        end
+
+        subgraph Platform
+            SA_PS["GET/PUT /super/platform-settings<br/>PlatformSettingsController (public_menu_base_url)"]
         end
 
         SA_PROF["GET /super/profile<br/>ProfileController@edit"]
@@ -500,9 +509,9 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant SPA as Client SPA
+    participant SPA as Client SPA universal
     participant Laravel as Laravel Router
-    participant TokenMW as AuthenticateRestaurantToken
+    participant SlugMW as ResolveTenantFromSlug
     participant Throttle as throttle:30,1
     participant FR as StoreOrderRequest
     participant Ctrl as Api\OrderController
@@ -512,16 +521,19 @@ sequenceDiagram
     participant Model as Order Model
     participant DB as PostgreSQL
 
-    SPA->>Laravel: POST /api/orders<br/>X-Restaurant-Token: abc123
-    Laravel->>TokenMW: Extraer y validar token
-    TokenMW->>DB: SELECT * FROM restaurants WHERE access_token = ?
-    DB-->>TokenMW: Restaurant (o null)
+    SPA->>Laravel: POST /api/public/{slug}/orders
+    Laravel->>SlugMW: Extraer {slug} del path
+    SlugMW->>DB: SELECT * FROM restaurants WHERE slug = ?
+    DB-->>SlugMW: Restaurant (o null)
 
-    alt Token inválido o restaurante inactivo
-        TokenMW-->>SPA: 401 Unauthorized
+    alt Slug no existe
+        SlugMW-->>SPA: 404 {code: "tenant_not_found"}
+    end
+    alt !canReceiveOrders() (suspended / past_due / period expired)
+        SlugMW-->>SPA: 410 {code: "tenant_unavailable"}
     end
 
-    TokenMW->>Throttle: Verificar rate limit (30/min)
+    SlugMW->>Throttle: Verificar rate limit (30/min)
 
     alt Límite excedido
         Throttle-->>SPA: 429 Too Many Requests
@@ -774,8 +786,8 @@ flowchart TD
         SCOPE["TenantScope::apply()<br/>WHERE restaurant_id = User.restaurant_id"]
     end
 
-    subgraph ApiFlow["API Pública"]
-        TOKEN["AuthenticateRestaurantToken<br/>→ Restaurant por token"]
+    subgraph ApiFlow["API Pública (universal slug-based)"]
+        SLUG["ResolveTenantFromSlug<br/>→ Restaurant por slug del path"]
         ATTR["request.attributes.restaurant"]
     end
 
@@ -785,7 +797,7 @@ flowchart TD
     end
 
     REQ --> AUTH --> TENANT_MW --> SCOPE
-    REQ --> TOKEN --> ATTR
+    REQ --> SLUG --> ATTR
     REQ --> SA_AUTH --> NO_SCOPE
 
     subgraph TenantModels["Modelos con BelongsToTenant"]
@@ -821,38 +833,40 @@ flowchart TD
     subgraph Guards["Authentication Guards"]
         WEB["web (default)<br/>Session-based<br/>Model: User"]
         SUPERADMIN["superadmin<br/>Session-based<br/>Model: SuperAdmin"]
-        API_TOKEN["Custom Token<br/>(no guard, middleware directo)<br/>Header: X-Restaurant-Token"]
+        API_SLUG["Public API<br/>(no guard, tenant resuelto por URL)<br/>Path: /api/public/{slug}/*"]
     end
 
     subgraph Middleware["Middleware Stack"]
         direction TB
-        HI["HandleInertiaRequests<br/>(global en web)<br/>Comparte: auth.user, flash"]
+        HI["HandleInertiaRequests<br/>(global en web)<br/>Comparte: auth.user, flash, billing, menu_base_url"]
         AUTH_MW["auth<br/>Verifica sesión web"]
+        VERIFIED_MW["verified<br/>Requiere email verificado (self-signup)"]
         GUEST_MW["guest<br/>Redirige si ya autenticado"]
         AUTH_SA["auth:superadmin<br/>Verifica sesión superadmin"]
         GUEST_SA["guest:superadmin<br/>Redirige si ya autenticado"]
         TENANT_MW["tenant (EnsureTenantContext)<br/>403 si User sin restaurant_id"]
-        TOKEN_MW["auth.restaurant<br/>(AuthenticateRestaurantToken)<br/>401 si token inválido"]
+        SLUG_MW["tenant.slug<br/>(ResolveTenantFromSlug)<br/>404 si slug inexistente, 410 si !canReceiveOrders()"]
         THRT5["throttle:5,1<br/>Login: 5 req/min"]
         THRT30["throttle:30,1<br/>Orders API: 30 req/min"]
     end
 
     subgraph Routes["Aplicación por Grupo de Rutas"]
         R_ADMIN["Admin Web<br/>HI → auth → tenant"]
-        R_GUEST["Login Pages<br/>HI → guest"]
-        R_API["API Pública<br/>auth.restaurant"]
+        R_GUEST["Login/Register Pages<br/>HI → guest"]
+        R_API["API Pública universal<br/>tenant.slug + throttle"]
         R_SA["SuperAdmin<br/>HI → auth:superadmin"]
         R_SA_G["SuperAdmin Login<br/>HI → guest:superadmin"]
     end
 
     HI --> R_ADMIN
     AUTH_MW --> R_ADMIN
+    VERIFIED_MW --> R_ADMIN
     TENANT_MW --> R_ADMIN
 
     HI --> R_GUEST
     GUEST_MW --> R_GUEST
 
-    TOKEN_MW --> R_API
+    SLUG_MW --> R_API
     THRT30 --> R_API
 
     HI --> R_SA
@@ -951,7 +965,7 @@ Todas siguen el mismo patrón: verificar que `User.restaurant_id === Model.resta
 
 | Resource | Campos clave | Oculta |
 |---|---|---|
-| **RestaurantResource** | name, slug, is_open, delivery_methods, orders_limit_reached | access_token |
+| **RestaurantResource** | name, slug, is_open, delivery_methods, orders_limit_reached, branding colors, logo_url, today_schedule, closure_reason | — |
 | **MenuCategoryResource** | name, image_url, products (nested) | — |
 | **MenuProductResource** | name, price, image_url, modifier_groups (nested) | **production_cost** |
 | **ModifierGroupResource** | name, selection_type, is_required, options (nested) | — |

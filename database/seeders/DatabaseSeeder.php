@@ -30,10 +30,7 @@ class DatabaseSeeder extends Seeder
 
             $restaurant = \App\Models\Restaurant::firstOrCreate(
                 ['name' => 'El Gran Sabor'],
-                [
-                    'slug' => 'el-gran-sabor',
-                    'access_token' => \Illuminate\Support\Str::random(60),
-                ]
+                ['slug' => 'el-gran-sabor']
             );
 
             $user->update(['restaurant_id' => $restaurant->id]);

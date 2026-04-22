@@ -351,16 +351,10 @@ class CouponTest extends TestCase
     private function apiRestaurant(): Restaurant
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-coupon-token',
             'is_active' => true,
         ]);
 
         return $restaurant;
-    }
-
-    private function apiHeaders(Restaurant $restaurant): array
-    {
-        return ['Authorization' => 'Bearer '.$restaurant->access_token];
     }
 
     public function test_api_validate_valid_coupon(): void
@@ -368,11 +362,11 @@ class CouponTest extends TestCase
         $restaurant = $this->apiRestaurant();
         Coupon::factory()->fixed(50)->create(['restaurant_id' => $restaurant->id, 'code' => 'VALID50']);
 
-        $response = $this->postJson('/api/coupons/validate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/coupons/validate", [
             'code' => 'VALID50',
             'subtotal' => 200.00,
             'customer_phone' => '5551234567',
-        ], $this->apiHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJson([
@@ -386,11 +380,11 @@ class CouponTest extends TestCase
         $restaurant = $this->apiRestaurant();
         Coupon::factory()->fixed(50)->create(['restaurant_id' => $restaurant->id, 'code' => 'VALID50']);
 
-        $response = $this->postJson('/api/coupons/validate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/coupons/validate", [
             'code' => 'valid50',
             'subtotal' => 200.00,
             'customer_phone' => '5551234567',
-        ], $this->apiHeaders($restaurant));
+        ]);
 
         $response->assertOk()->assertJson(['valid' => true]);
     }
@@ -399,11 +393,11 @@ class CouponTest extends TestCase
     {
         $restaurant = $this->apiRestaurant();
 
-        $response = $this->postJson('/api/coupons/validate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/coupons/validate", [
             'code' => 'NOEXISTE',
             'subtotal' => 200.00,
             'customer_phone' => '5551234567',
-        ], $this->apiHeaders($restaurant));
+        ]);
 
         $response->assertOk()->assertJson([
             'valid' => false,
@@ -416,11 +410,11 @@ class CouponTest extends TestCase
         $restaurant = $this->apiRestaurant();
         Coupon::factory()->expired()->create(['restaurant_id' => $restaurant->id, 'code' => 'EXPIRED']);
 
-        $response = $this->postJson('/api/coupons/validate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/coupons/validate", [
             'code' => 'EXPIRED',
             'subtotal' => 200.00,
             'customer_phone' => '5551234567',
-        ], $this->apiHeaders($restaurant));
+        ]);
 
         $response->assertOk()->assertJson(['valid' => false]);
     }
@@ -428,14 +422,14 @@ class CouponTest extends TestCase
     public function test_api_validate_from_other_restaurant_not_found(): void
     {
         $restaurant1 = $this->apiRestaurant();
-        $restaurant2 = Restaurant::factory()->create(['access_token' => 'other-token', 'is_active' => true]);
+        $restaurant2 = Restaurant::factory()->create(['is_active' => true]);
         Coupon::factory()->create(['restaurant_id' => $restaurant2->id, 'code' => 'OTHER']);
 
-        $response = $this->postJson('/api/coupons/validate', [
+        $response = $this->postJson("/api/public/{$restaurant1->slug}/coupons/validate", [
             'code' => 'OTHER',
             'subtotal' => 200.00,
             'customer_phone' => '5551234567',
-        ], $this->apiHeaders($restaurant1));
+        ]);
 
         // Anti-enumeration: the public validate endpoint collapses "not found"
         // and lifecycle failures (inactive/expired/exhausted) into a single
@@ -450,7 +444,6 @@ class CouponTest extends TestCase
         $this->mockGoogleMapsService();
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-order-coupon-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_delivery' => true,
@@ -521,7 +514,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'SAVE50']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
 
@@ -544,7 +537,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'PCT10']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
 
@@ -560,7 +553,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'NOEXISTE']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertUnprocessable()
             ->assertJsonValidationErrors('coupon_code');
@@ -573,7 +566,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'EXPIRED']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertUnprocessable();
     }
@@ -584,7 +577,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
 
@@ -608,7 +601,7 @@ class CouponTest extends TestCase
         // subtotal = 2 * $100 = $200 < $500
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'BIGMIN']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertUnprocessable();
     }
@@ -624,7 +617,7 @@ class CouponTest extends TestCase
             'cash_amount' => 150.00,
         ]);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
     }
@@ -636,7 +629,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'SAVE50']);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
         $message = $response->json('data.whatsapp_message');
@@ -653,7 +646,7 @@ class CouponTest extends TestCase
 
         $payload = $this->orderPayload($branch, $product, ['coupon_code' => 'HUGE', 'cash_amount' => 0.01]);
 
-        $response = $this->postJson('/api/orders', $payload, ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", $payload);
 
         $response->assertCreated();
 

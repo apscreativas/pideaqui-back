@@ -4,6 +4,8 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -25,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'tenant' => \App\Http\Middleware\EnsureTenantContext::class,
-            'auth.restaurant' => \App\Http\Middleware\AuthenticateRestaurantToken::class,
+            'tenant.slug' => \App\Http\Middleware\ResolveTenantFromSlug::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
     })
@@ -33,6 +35,23 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('super/*')) {
                 return redirect()->route('login');
+            }
+        });
+
+        // 429 Too Many Requests — mensaje en español para la SPA pública y
+        // cualquier endpoint que espera JSON. Incluye `retry_after` para que
+        // el cliente pueda mostrar una cuenta regresiva amable.
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                $retryAfter = (int) ($e->getHeaders()['Retry-After'] ?? 60);
+
+                return new JsonResponse([
+                    'code' => 'too_many_requests',
+                    'message' => 'Demasiadas solicitudes. Espera unos segundos e intenta de nuevo.',
+                    'retry_after' => $retryAfter,
+                ], 429, [
+                    'Retry-After' => (string) $retryAfter,
+                ]);
             }
         });
     })->create();

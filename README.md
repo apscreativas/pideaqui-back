@@ -284,26 +284,28 @@ admin/
 
 ## API Publica
 
-Todas las rutas requieren un token `Bearer` en el header `Authorization`.
-El token es el `access_token` del restaurante.
+El tenant se resuelve desde la URL (`/api/public/{slug}/*`) via middleware `ResolveTenantFromSlug`. No hay header de auth — el slug del restaurante ES el identificador público.
 
-| Metodo | Endpoint                  | Descripcion                                            | Rate Limit |
-| ------ | ------------------------- | ------------------------------------------------------ | ---------- |
-| `GET`  | `/api/restaurant`         | Info del restaurante, horarios, metodos de pago        | —          |
-| `GET`  | `/api/menu`               | Menu completo con categorias, productos, modificadores | —          |
-| `GET`  | `/api/branches`           | Lista de sucursales activas                            | —          |
-| `POST` | `/api/delivery/calculate` | Calcular costo de envio y sucursal optima              | —          |
-| `POST` | `/api/orders`             | Crear un nuevo pedido                                  | 30/min     |
+| Metodo | Endpoint                                       | Descripcion                                            | Rate Limit |
+| ------ | ---------------------------------------------- | ------------------------------------------------------ | ---------- |
+| `GET`  | `/api/public/{slug}/restaurant`                | Info del restaurante, horarios, metodos de pago        | 120/min    |
+| `GET`  | `/api/public/{slug}/menu`                      | Menu completo con categorias, productos, modificadores | 120/min    |
+| `GET`  | `/api/public/{slug}/branches`                  | Lista de sucursales activas                            | 120/min    |
+| `POST` | `/api/public/{slug}/delivery/calculate`        | Calcular costo de envio y sucursal optima              | 30/min     |
+| `POST` | `/api/public/{slug}/coupons/validate`          | Validar cupón (preview sin persistir)                  | 20/min     |
+| `POST` | `/api/public/{slug}/orders`                    | Crear un nuevo pedido                                  | 30/min     |
+| `GET`  | `/api/slug-check?slug={x}`                     | Disponibilidad de slug (self-signup + SuperAdmin)      | 120/min    |
 
-### Autenticacion
+### Ejemplo
 
 ```bash
-curl -H "Authorization: Bearer <access_token>" \
-     -H "Accept: application/json" \
-     http://localhost/api/restaurant
+curl -H "Accept: application/json" \
+     http://localhost/api/public/el-puebla/restaurant
 ```
 
-El `access_token` se genera automaticamente al crear un restaurante en el SuperAdmin. Puedes verlo y regenerarlo en la pagina de detalle del restaurante en el panel SuperAdmin.
+Respuestas de error del middleware: `404 {code:"tenant_not_found"}` si el slug no existe; `410 {code:"tenant_unavailable"}` si el restaurante no puede recibir pedidos (status suspended, past_due, incomplete, disabled, o período vencido). Errores `429` retornan JSON en español con `retry_after` vía handler global en `bootstrap/app.php`.
+
+Ver contrato completo en [`docs/modules/10-api.md`](./docs/modules/10-api.md).
 
 ---
 

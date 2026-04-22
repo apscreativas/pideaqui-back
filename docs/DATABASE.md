@@ -15,9 +15,8 @@ Entidad principal (tenant). Creada por el SuperAdmin.
 |---|---|---|---|
 | `id` | bigint | PK, auto-increment | |
 | `name` | varchar(255) | NOT NULL | Nombre del restaurante |
-| `slug` | varchar(255) | UNIQUE, NOT NULL | Identificador URL amigable |
+| `slug` | varchar(255) | UNIQUE, NOT NULL | Identificador URL amigable (usado por la SPA universal `/r/{slug}`) |
 | `logo_path` | varchar(255) | NULLABLE | Ruta de imagen en cloud storage |
-| `access_token` | varchar(255) | UNIQUE, NOT NULL | Token para autenticación de la API del cliente |
 | `is_active` | boolean | NOT NULL, DEFAULT true | Estado activo/inactivo |
 | `orders_limit` | integer | NULLABLE | Límite de pedidos del periodo (config SuperAdmin) |
 | `orders_limit_start` | date | NULLABLE | Inicio del periodo de límite |
@@ -38,10 +37,13 @@ Entidad principal (tenant). Creada por el SuperAdmin.
 | `pm_type` | varchar(255) | NULLABLE | Tipo de método de pago Stripe |
 | `pm_last_four` | varchar(4) | NULLABLE | Últimos 4 dígitos de tarjeta |
 | `trial_ends_at` | timestamp | NULLABLE | Fin de trial (Cashier, no usado) |
+| `signup_source` | varchar(32) | NULLABLE, INDEX | Origen del alta: `super_admin` (creado manual por SuperAdmin) \| `self_signup` (auto-registro público en `/register`). Agregado 2026-04-22. |
 | `created_at` | timestamp | NULLABLE | |
 | `updated_at` | timestamp | NULLABLE | |
 
-**Índices:** `slug` (unique), `access_token` (unique), `stripe_id` (index)
+**Columna eliminada 2026-04-22:** `access_token` (varchar(64) UNIQUE) fue eliminada. La SPA universal resuelve el tenant por slug URL via el middleware `ResolveTenantFromSlug`; ya no se usa autenticación por token por restaurante.
+
+**Índices:** `slug` (unique), `stripe_id` (index), `signup_source` (index)
 
 **Relaciones:**
 - Belongs to: `plans`

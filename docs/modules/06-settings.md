@@ -27,6 +27,15 @@ Información pública del restaurante.
 
 > **Nota (abr 2026):** La sección "Redes sociales" (`instagram`, `facebook`, `tiktok`) fue removida del UI y de la API por desuso. Las columnas permanecen en la tabla `restaurants` (Opción A — sin migración destructiva). No se exponen ni se aceptan en requests.
 
+#### Enlace público + QR (nuevo Abr 2026)
+
+La pantalla General muestra un card **"Tu enlace público"** al inicio con:
+- URL completa del menú (ej. `https://menu.pideaqui.mx/r/el-puebla`). Se construye con `Restaurant::menuPublicUrl()` que usa `PlatformSetting::get('public_menu_base_url')` con fallback a `config('app.url')`. El slug nunca cambia desde este panel (el admin NO puede renombrar — solo SuperAdmin).
+- **QR client-side** generado con la librería `qrcode` npm vía componente reutilizable `QrCode.vue` (`resources/js/Components/QrCode.vue`). Renderiza a `<canvas>` 200×200px.
+- Botones **Copiar URL** (clipboard) y **Descargar QR (PNG)** (via `canvas.toDataURL`).
+
+El slug se comparte con el Inertia props en `HandleInertiaRequests` como `menu_base_url` para que todas las pantallas del admin puedan construir URLs consistentes.
+
 ---
 
 ### `ar_15` — Métodos de Entrega (`/settings/delivery-methods`)

@@ -57,6 +57,16 @@ Ordenado por orden cronológico de entrega. Cada ítem vive en producción.
 - **Fechas especiales y días festivos**: `restaurant_special_dates`, `Restaurant::getResolvedScheduleForDate()`. 7 holidays mexicanos como preset.
 - **Catálogo de modificadores reutilizables** (sistema híbrido inline + catálogo). [04-menu.md](./modules/04-menu.md) §"Catálogo de Modificadores".
 
+### 2.3 Abril 2026 (segunda quincena)
+
+- **Self-signup público** (`/register`, `throttle:3,1`) — cualquier dueño de restaurante puede registrarse y obtener plan de gracia (14 días, 50 pedidos, 1 sucursal). Requiere verificación obligatoria de correo. SuperAdmin crea pre-verificados. [01-auth.md](./modules/01-auth.md).
+- **`RestaurantProvisioningService`** — orquestador único del onboarding reutilizado por SuperAdmin manual y self-signup.
+- **Email verification custom** con `VerifyEmailNotification` en español + branding naranja. User `implements MustVerifyEmail`. Backfill one-shot para usuarios existentes.
+- **Columna `restaurants.signup_source`** para diferenciar `super_admin` vs `self_signup`.
+- **SuperAdmin Dashboard — Tab "Alertas accionables"** con 8 cards click-through (gracia ≤3d, ≥80% límite, modo manual, nuevos 7d, past_due, grace total, suspended, sin subscription). Filtros `?alert=...` en Restaurants/Index con banner + badges inline. Fix N+1 con scope `Restaurant::withPeriodOrdersCount()`.
+- **Redesign de `SuperAdmin/Restaurants/Show.vue`** con hero inline + KPI row horizontal + grid 3/2 para mejor densidad.
+- **Universal SPA** — bundle único sirve a todos los restaurantes (tenant resuelto por URL `/r/{slug}`). Columna `access_token` eliminada. Hardening cross-tenant: `AbortController` por tenant, `router.beforeEach` bloqueante, slug guards en stores. Ver [STATUS.md](../STATUS.md) §"Multi-tenant SPA universal".
+
 ### 2.2 Marzo — Abril 2026
 
 - **Edición de pedidos post-creación** con audit trail. Bloqueado en `on_the_way/delivered/cancelled`. Optimistic lock vía `expected_updated_at` (409 Conflict si stale). `OrderEditService`, tabla `order_audits`, evento `OrderUpdated`. [03-orders.md](./modules/03-orders.md) §"Edición Post-Creación".
@@ -82,8 +92,9 @@ Ordenado por orden cronológico de entrega. Cada ítem vive en producción.
 
 - **Facturación fiscal (CFDI)** — actualmente solo recibos de Stripe. Requerido para clientes empresariales en México. Ver [BILLING_SPEC.md](./BILLING_SPEC.md) §"Facturación fiscal".
 - **Monitoreo y observabilidad** — no hay instrumentación formal (logs estructurados, Sentry, métricas). Se detecta solo por reportes.
-- **Rotación programada de `access_token`** — hoy es manual desde SuperAdmin. Considerar rotación automática anual con notificación previa.
-- **Tests de integración del cliente SPA** — cobertura 0% hoy (solo tests backend). Riesgo de regresiones en checkout.
+- **Tests de integración del cliente SPA** — cobertura 0% hoy (solo tests backend). Riesgo de regresiones en checkout, especialmente en los fixes cross-tenant de universal SPA (R1-R4 del hardening Abr 22).
+- **Captcha en `/register`** — hoy solo throttle 3/min + email verification. Considerar reCAPTCHA v3 o hCaptcha si aparece spam.
+- **Cancelar cuenta (baja self-service)** — hoy no existe, solo SuperAdmin puede desactivar.
 
 ### Media prioridad
 
@@ -94,9 +105,11 @@ Ordenado por orden cronológico de entrega. Cada ítem vive en producción.
 
 ### Baja prioridad / investigación
 
-- **Multi-restaurante por build en SPA** — hoy un build = un restaurante (token en `.env`). Investigar runtime resolution para compartir builds.
+- ~~**Multi-restaurante por build en SPA**~~ — ✅ **Completado Abr 2026**: un único build universal sirve a todos los restaurantes (resolución runtime por URL `/r/{slug}`).
 - **Reverb gestionado vs propio** — evaluar costo/beneficio de Laravel Cloud WebSockets vs Reverb en systemd.
 - **Rework completo de `STATUS.md`** — ya lo consolidamos en `CHANGELOG.md`, pero faltaría automatizar la generación desde commits.
+- **TTL / re-fetch en menú** — hoy el menú se fetcha una vez por `bootstrapTenant`. Si el admin desactiva un producto a mitad de checkout, el SPA no se entera hasta que el user re-fetcha manualmente o navega fuera y regresa. Backend rechaza el order, pero UX mejorable. Agregar TTL 5-10 min o re-fetch en `visibilitychange`.
+- **Landing link a `/register`** — hoy landing Nuxt no tiene CTA a registro público. Agregar cuando haya copy de marketing listo.
 
 ---
 
@@ -110,4 +123,4 @@ El anterior documento estructuraba el trabajo en 13 fases secuenciales con depen
 
 ---
 
-_PideAquí — Roadmap v1.0 — Abril 2026_
+_PideAquí — Roadmap v1.1 — Abril 2026_

@@ -1,7 +1,9 @@
 <script setup>
-import { Head, router, useForm } from '@inertiajs/vue3'
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
+import SlugInput from '@/Components/SlugInput.vue'
+import QrCode from '@/Components/QrCode.vue'
 
 const props = defineProps({
     restaurant: Object,
@@ -13,9 +15,41 @@ const props = defineProps({
     plans: Array,
 })
 
-const showToken = ref(false)
-const showRegenerateModal = ref(false)
-const regenerating = ref(false)
+const page = usePage()
+const menuBaseUrl = computed(() => {
+    const v = page.props.menu_base_url ?? ''
+    return String(v).replace(/\/$/, '')
+})
+const publicMenuUrl = computed(() => `${menuBaseUrl.value}/r/${props.restaurant.slug}`)
+const urlPrefix = computed(() => `${menuBaseUrl.value}/r/`)
+
+const showSlugRename = ref(false)
+const slugAvailable = ref(false)
+const qrRef = ref(null)
+
+const slugForm = useForm({
+    slug: props.restaurant.slug,
+    confirm: false,
+})
+
+function copyPublicUrl() {
+    navigator.clipboard.writeText(publicMenuUrl.value)
+}
+
+function downloadQr() {
+    qrRef.value?.download()
+}
+
+function submitSlugRename() {
+    slugForm.patch(route('super.restaurants.rename-slug', props.restaurant.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showSlugRename.value = false
+            slugForm.confirm = false
+        },
+    })
+}
+
 const showResetPasswordModal = ref(false)
 const editingLimits = ref(false)
 const showGraceModal = ref(false)
@@ -41,6 +75,41 @@ const ordersPercent = computed(() => {
 const branchesPercent = computed(() => {
     if (!props.max_branches) return 0
     return Math.min(100, Math.round((props.branch_count / props.max_branches) * 100))
+})
+
+const statusMeta = computed(() => {
+    const map = {
+        active: { label: 'Activo', dot: 'bg-green-500', text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
+        grace_period: { label: 'Periodo de gracia', dot: 'bg-orange-500', text: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
+        past_due: { label: 'Pago vencido', dot: 'bg-yellow-500', text: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+        suspended: { label: 'Suspendido', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+        canceled: { label: 'Cancelado', dot: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' },
+        incomplete: { label: 'Incompleto', dot: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+        disabled: { label: 'Deshabilitado', dot: 'bg-gray-400', text: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-200' },
+    }
+    return map[props.restaurant.status] ?? { label: props.restaurant.status, dot: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' }
+})
+
+const signupSourceLabel = computed(() => {
+    if (props.restaurant.signup_source === 'self_signup') return 'Auto-registro'
+    if (props.restaurant.signup_source === 'super_admin') return 'SuperAdmin'
+    return '—'
+})
+
+const graceDaysLeft = computed(() => {
+    if (!props.restaurant.grace_period_ends_at) return null
+    const end = new Date(props.restaurant.grace_period_ends_at)
+    const now = new Date()
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24))
+    return Math.max(0, diff)
+})
+
+const graceUrgency = computed(() => {
+    const d = graceDaysLeft.value
+    if (d === null) return null
+    if (d <= 1) return 'critical'
+    if (d <= 3) return 'high'
+    return 'normal'
 })
 
 function formatDate(dateStr) {
@@ -87,18 +156,10 @@ function resetAdminPassword() {
     })
 }
 
-function copyToken() {
-    navigator.clipboard.writeText(props.restaurant.access_token)
-}
-
-function regenerateToken() {
-    regenerating.value = true
-    router.post(route('super.restaurants.regenerate-token', props.restaurant.id), {}, {
-        onFinish: () => {
-            regenerating.value = false
-            showRegenerateModal.value = false
-            showToken.value = false
-        },
+function sendVerification() {
+    if (!confirm('¿Enviar correo de verificación al administrador?')) return
+    router.post(route('super.restaurants.send-verification', props.restaurant.id), {}, {
+        preserveScroll: true,
     })
 }
 </script>
@@ -106,81 +167,277 @@ function regenerateToken() {
 <template>
     <Head :title="`SuperAdmin — ${restaurant.name}`" />
     <SuperAdminLayout>
-        <!-- Header -->
-        <div class="flex items-start justify-between mb-6">
-            <div>
-                <div class="flex items-center gap-2 text-sm text-gray-400 mb-2">
-                    <a :href="route('super.restaurants.index')" class="hover:text-gray-600">Restaurantes</a>
-                    <span>/</span>
-                    <span class="text-gray-900 font-medium">{{ restaurant.name }}</span>
-                </div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ restaurant.name }}</h1>
-                <p class="mt-1 text-sm text-gray-500">{{ restaurant.slug }}</p>
+        <!-- ═══ HERO ═══ -->
+        <div class="mb-6">
+            <!-- Breadcrumb -->
+            <div class="flex items-center gap-2 text-xs text-gray-400 mb-3">
+                <Link :href="route('super.restaurants.index')" class="hover:text-gray-700 transition-colors">Restaurantes</Link>
+                <span class="material-symbols-outlined text-sm">chevron_right</span>
+                <span class="text-gray-600 font-medium truncate max-w-[300px]">{{ restaurant.name }}</span>
             </div>
-            <div class="flex items-center gap-3">
-                <span
-                    class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium"
-                    :class="restaurant.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
-                >
-                    {{ restaurant.is_active ? 'Activo' : 'Inactivo' }}
-                </span>
-                <button
-                    @click="toggleActive"
-                    class="px-4 py-2 rounded-xl border text-sm font-semibold transition-colors"
-                    :class="restaurant.is_active
-                        ? 'border-red-200 text-red-600 hover:bg-red-50'
-                        : 'border-green-200 text-green-600 hover:bg-green-50'"
-                >
-                    {{ restaurant.is_active ? 'Desactivar' : 'Activar' }}
-                </button>
+
+            <div class="flex items-start justify-between gap-4 flex-wrap">
+                <!-- Title + inline metadata -->
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-3 flex-wrap mb-2">
+                        <h1 class="text-3xl font-bold text-gray-900 tracking-tight">{{ restaurant.name }}</h1>
+                        <!-- Status badge (live dot) -->
+                        <span
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
+                            :class="[statusMeta.bg, statusMeta.text, statusMeta.border]"
+                        >
+                            <span class="w-1.5 h-1.5 rounded-full" :class="statusMeta.dot"></span>
+                            {{ statusMeta.label }}
+                        </span>
+                    </div>
+
+                    <!-- Inline pills: slug + mode + plan + origen + creado -->
+                    <div class="flex items-center gap-x-4 gap-y-2 flex-wrap text-sm text-gray-500">
+                        <span class="inline-flex items-center gap-1.5 font-mono text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md">
+                            <span class="material-symbols-outlined text-sm">link</span>
+                            {{ restaurant.slug }}
+                        </span>
+
+                        <span class="inline-flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-base text-gray-400">payments</span>
+                            <span
+                                class="font-semibold"
+                                :class="isManual ? 'text-gray-600' : 'text-[#FF5722]'"
+                            >{{ isManual ? 'Modo manual' : 'Suscripción' }}</span>
+                            <span v-if="restaurant.plan" class="text-gray-700">· {{ restaurant.plan.name }}</span>
+                        </span>
+
+                        <span class="inline-flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-base text-gray-400">person_add</span>
+                            <span>{{ signupSourceLabel }}</span>
+                        </span>
+
+                        <span class="inline-flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-base text-gray-400">calendar_today</span>
+                            <span>{{ formatDate(restaurant.created_at) }}</span>
+                        </span>
+
+                        <span class="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                            <span class="material-symbols-outlined text-sm">tag</span>
+                            ID {{ restaurant.id }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Primary action -->
+                <div class="shrink-0">
+                    <button
+                        @click="toggleActive"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors"
+                        :class="restaurant.is_active
+                            ? 'border-red-200 text-red-600 hover:bg-red-50'
+                            : 'border-green-200 text-green-600 hover:bg-green-50 bg-green-50/50'"
+                    >
+                        <span class="material-symbols-outlined text-base">
+                            {{ restaurant.is_active ? 'toggle_off' : 'toggle_on' }}
+                        </span>
+                        {{ restaurant.is_active ? 'Desactivar restaurante' : 'Activar restaurante' }}
+                    </button>
+                </div>
             </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-6">
+        <!-- ═══ KPI ROW ═══ -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <!-- Pedidos del mes -->
+            <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 rounded-lg bg-[#FF5722]/10 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-[#FF5722] text-xl" style="font-variation-settings:'FILL' 1">receipt_long</span>
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pedidos del mes</span>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5 mb-2">
+                    <span class="text-3xl font-bold text-gray-900 tabular-nums">{{ orders_count }}</span>
+                    <span class="text-sm text-gray-400">/ {{ orders_limit }}</span>
+                </div>
+                <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                        class="h-full rounded-full transition-all"
+                        :class="barClass(ordersPercent)"
+                        :style="{ width: ordersPercent + '%' }"
+                    ></div>
+                </div>
+                <p class="text-xs text-gray-400 mt-1.5">{{ ordersPercent }}% utilizado</p>
+            </div>
 
-            <!-- Left column -->
-            <div class="col-span-2 space-y-6">
+            <!-- Sucursales -->
+            <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-blue-600 text-xl" style="font-variation-settings:'FILL' 1">store</span>
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sucursales</span>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5 mb-2">
+                    <span class="text-3xl font-bold text-gray-900 tabular-nums">{{ branch_count }}</span>
+                    <span class="text-sm text-gray-400">/ {{ max_branches }}</span>
+                </div>
+                <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                        class="h-full rounded-full transition-all"
+                        :class="barClass(branchesPercent)"
+                        :style="{ width: branchesPercent + '%' }"
+                    ></div>
+                </div>
+                <p class="text-xs text-gray-400 mt-1.5">{{ branchesPercent }}% utilizado</p>
+            </div>
 
-                <!-- Plan & Uso -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                    <div class="flex items-center justify-between mb-5">
-                        <div>
-                            <h2 class="text-base font-semibold text-gray-900">Plan y uso</h2>
-                            <div class="flex items-center gap-2 mt-0.5">
-                                <span
-                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                                    :class="isManual ? 'bg-gray-100 text-gray-600' : 'bg-[#FF5722]/10 text-[#FF5722]'"
-                                >
-                                    {{ isManual ? 'Modo manual' : 'Suscripción' }}
-                                </span>
-                                <span v-if="restaurant.plan" class="text-sm text-gray-500">
-                                    Plan: <strong class="text-gray-900">{{ restaurant.plan.name }}</strong>
-                                </span>
+            <!-- Gracia / Suscripción -->
+            <div
+                class="bg-white rounded-xl border shadow-sm p-5"
+                :class="graceUrgency === 'critical' ? 'border-red-200' : graceUrgency === 'high' ? 'border-orange-200' : 'border-gray-100'"
+            >
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <div
+                            class="w-9 h-9 rounded-lg flex items-center justify-center"
+                            :class="graceUrgency === 'critical' ? 'bg-red-50' : graceUrgency === 'high' ? 'bg-orange-50' : 'bg-amber-50'"
+                        >
+                            <span
+                                class="material-symbols-outlined text-xl"
+                                :class="graceUrgency === 'critical' ? 'text-red-600' : graceUrgency === 'high' ? 'text-orange-600' : 'text-amber-600'"
+                                style="font-variation-settings:'FILL' 1"
+                            >schedule</span>
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            {{ restaurant.status === 'grace_period' ? 'Gracia vence' : 'Suscripción' }}
+                        </span>
+                    </div>
+                </div>
+                <template v-if="graceDaysLeft !== null">
+                    <div class="flex items-baseline gap-1.5 mb-1">
+                        <span
+                            class="text-3xl font-bold tabular-nums"
+                            :class="graceUrgency === 'critical' ? 'text-red-600' : 'text-gray-900'"
+                        >{{ graceDaysLeft }}</span>
+                        <span class="text-sm text-gray-400">{{ graceDaysLeft === 1 ? 'día' : 'días' }}</span>
+                    </div>
+                    <p class="text-xs text-gray-500">{{ formatDate(restaurant.grace_period_ends_at) }}</p>
+                </template>
+                <template v-else-if="restaurant.subscription_ends_at">
+                    <div class="flex items-baseline gap-1.5 mb-1">
+                        <span class="text-lg font-semibold text-gray-900">Vence</span>
+                    </div>
+                    <p class="text-xs text-gray-500">{{ formatDate(restaurant.subscription_ends_at) }}</p>
+                </template>
+                <template v-else>
+                    <p class="text-lg font-semibold text-gray-900">—</p>
+                    <p class="text-xs text-gray-400 mt-1">Sin periodo activo</p>
+                </template>
+            </div>
+
+            <!-- Stripe / ID -->
+            <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-indigo-600 text-xl">credit_card</span>
+                        </div>
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Stripe</span>
+                    </div>
+                </div>
+                <template v-if="restaurant.stripe_id">
+                    <p class="text-base font-semibold text-gray-900 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        Conectado
+                    </p>
+                    <p class="text-xs text-gray-400 font-mono truncate mt-1">{{ restaurant.stripe_id }}</p>
+                </template>
+                <template v-else>
+                    <p class="text-base font-semibold text-gray-900 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                        Sin suscripción
+                    </p>
+                    <p class="text-xs text-gray-400 mt-1">No se ha vinculado cliente Stripe.</p>
+                </template>
+            </div>
+        </div>
+
+        <!-- ═══ MAIN CONTENT GRID ═══ -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+            <!-- LEFT — admin info + billing actions (60%) -->
+            <div class="lg:col-span-3 space-y-5">
+
+                <!-- Administrador -->
+                <section class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <header class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-gray-400">person</span>
+                            <h2 class="text-sm font-semibold text-gray-900">Administrador</h2>
+                        </div>
+                    </header>
+                    <div v-if="admin" class="p-5">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="w-12 h-12 rounded-full bg-[#FF5722]/10 flex items-center justify-center shrink-0">
+                                <span class="text-[#FF5722] font-bold text-lg">{{ admin.name.charAt(0).toUpperCase() }}</span>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="font-semibold text-gray-900 truncate">{{ admin.name }}</p>
+                                <p class="text-sm text-gray-500 truncate">{{ admin.email }}</p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <div class="grid grid-cols-2 gap-2">
+                            <button
+                                @click="showResetPasswordModal = true"
+                                class="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-700 hover:bg-amber-50 transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-base">lock_reset</span>
+                                Restablecer contraseña
+                            </button>
+                            <button
+                                @click="sendVerification"
+                                class="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-base">mark_email_read</span>
+                                Enviar verificación
+                            </button>
+                        </div>
+                    </div>
+                    <div v-else class="p-5 text-center text-sm text-gray-400">
+                        Sin administrador asignado.
+                    </div>
+                </section>
+
+                <!-- Plan / Límites -->
+                <section class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <header class="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-gray-400">tune</span>
+                            <h2 class="text-sm font-semibold text-gray-900">Plan y límites</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
                             <button
                                 v-if="isManual && !editingLimits"
                                 @click="editingLimits = true"
-                                class="text-sm text-gray-500 hover:underline font-medium"
+                                class="text-xs font-semibold text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
                             >Editar límites</button>
                             <button
                                 v-if="isManual && !editingLimits"
                                 @click="showGraceModal = true"
-                                class="text-sm text-[#FF5722] hover:underline font-medium"
+                                class="text-xs font-semibold text-white bg-[#FF5722] hover:bg-[#D84315] px-3 py-1.5 rounded-lg transition-colors"
                             >Iniciar suscripción</button>
                             <button
                                 v-if="isSubscription && !editingLimits"
                                 @click="showSwitchManualModal = true"
-                                class="text-sm text-gray-500 hover:underline font-medium"
+                                class="text-xs font-semibold text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors"
                             >Cambiar a manual</button>
                         </div>
-                    </div>
+                    </header>
 
-                    <!-- Manual limits editor -->
-                    <div v-if="editingLimits" class="mb-5">
-                        <form @submit.prevent="saveLimits" class="space-y-4 bg-gray-50 rounded-xl p-4">
-                            <p class="text-sm font-semibold text-gray-700">Límites manuales</p>
+                    <div class="p-5">
+                        <!-- Manual limits editor -->
+                        <form v-if="editingLimits" @submit.prevent="saveLimits" class="space-y-4 bg-gray-50 rounded-xl p-4 mb-4">
                             <div v-if="isSubscription" class="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-3 py-2 text-xs">
                                 <span class="material-symbols-outlined text-sm mt-0.5">warning</span>
                                 <span>Al guardar, la suscripción de Stripe se cancelará y el restaurante pasará a modo manual.</span>
@@ -196,204 +453,143 @@ function regenerateToken() {
                                     <input v-model.number="limitsForm.max_branches" type="number" min="1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
                                     <p v-if="limitsForm.errors.max_branches" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.max_branches }}</p>
                                 </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Inicio del periodo</label>
                                     <input v-model="limitsForm.orders_limit_start" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
-                                    <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Fin del periodo</label>
                                     <input v-model="limitsForm.orders_limit_end" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
-                                    <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
                                 </div>
                             </div>
                             <div class="flex gap-3">
                                 <button type="submit" :disabled="limitsForm.processing" class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-5 py-2 text-sm transition-colors disabled:opacity-60">
-                                    {{ isSubscription ? 'Cambiar a manual' : 'Guardar' }}
+                                    {{ isSubscription ? 'Cambiar a manual' : 'Guardar cambios' }}
                                 </button>
                                 <button type="button" @click="editingLimits = false" class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
                             </div>
                         </form>
-                    </div>
 
-                    <!-- Usage bars -->
-                    <div class="space-y-5">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-medium text-gray-700">Pedidos del mes</span>
-                                <span class="text-sm font-bold text-gray-900">{{ orders_count }} / {{ orders_limit }}</span>
+                        <!-- Read-only details grid -->
+                        <dl v-if="!editingLimits" class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                            <div>
+                                <dt class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Modo</dt>
+                                <dd class="text-gray-900 font-semibold">{{ isManual ? 'Manual' : 'Suscripción' }}</dd>
                             </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                                <div
-                                    class="h-full rounded-full transition-all"
-                                    :class="barClass(ordersPercent)"
-                                    :style="{ width: ordersPercent + '%' }"
-                                ></div>
+                            <div>
+                                <dt class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Plan</dt>
+                                <dd class="text-gray-900 font-semibold">{{ restaurant.plan?.name ?? 'Sin plan' }}</dd>
                             </div>
-                        </div>
-
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-sm font-medium text-gray-700">Sucursales</span>
-                                <span class="text-sm font-bold text-gray-900">{{ branch_count }} / {{ max_branches }}</span>
+                            <div>
+                                <dt class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Inicio del periodo</dt>
+                                <dd class="text-gray-700">{{ formatDate(restaurant.orders_limit_start) }}</dd>
                             </div>
-                            <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                                <div
-                                    class="h-full rounded-full transition-all"
-                                    :class="barClass(branchesPercent)"
-                                    :style="{ width: branchesPercent + '%' }"
-                                ></div>
+                            <div>
+                                <dt class="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Fin del periodo</dt>
+                                <dd class="text-gray-700">{{ formatDate(restaurant.orders_limit_end) }}</dd>
                             </div>
-                        </div>
+                        </dl>
                     </div>
-                </div>
+                </section>
+
             </div>
 
-            <!-- Right column -->
-            <div class="space-y-6">
+            <!-- RIGHT — Public menu & QR (40%) -->
+            <div class="lg:col-span-2 space-y-5">
 
-                <!-- Admin info -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-                    <h2 class="text-sm font-semibold text-gray-900 mb-4">Administrador</h2>
-                    <div v-if="admin" class="space-y-3">
-                        <div class="space-y-2">
-                            <div class="flex items-center gap-2">
-                                <span class="material-symbols-outlined text-gray-400 text-lg">person</span>
-                                <span class="text-sm text-gray-700">{{ admin.name }}</span>
+                <section class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <header class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-gray-400">qr_code_2</span>
+                            <h2 class="text-sm font-semibold text-gray-900">Menú público</h2>
+                        </div>
+                        <button
+                            v-if="!showSlugRename"
+                            @click="showSlugRename = true"
+                            class="text-xs font-semibold text-amber-700 hover:bg-amber-50 px-2 py-1 rounded-md transition-colors"
+                        >
+                            Renombrar slug
+                        </button>
+                    </header>
+
+                    <div class="p-5">
+                        <!-- QR -->
+                        <div class="flex justify-center mb-4">
+                            <div class="p-3 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                <QrCode
+                                    ref="qrRef"
+                                    :value="publicMenuUrl"
+                                    :size="200"
+                                    :file-name="`${restaurant.slug}-qr.png`"
+                                />
                             </div>
-                            <div class="flex items-center gap-2">
-                                <span class="material-symbols-outlined text-gray-400 text-lg">mail</span>
-                                <span class="text-sm text-gray-700">{{ admin.email }}</span>
+                        </div>
+
+                        <!-- URL block -->
+                        <div class="bg-gray-50 rounded-xl p-3 font-mono text-[11px] text-gray-700 break-all mb-3 border border-gray-100">
+                            {{ publicMenuUrl }}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <button
+                                @click="copyPublicUrl"
+                                class="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-base">content_copy</span>
+                                Copiar URL
+                            </button>
+                            <button
+                                @click="downloadQr"
+                                class="inline-flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl bg-[#FF5722] hover:bg-[#D84315] text-white transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-base">download</span>
+                                Descargar QR
+                            </button>
+                        </div>
+
+                        <!-- Slug rename drawer -->
+                        <div v-if="showSlugRename" class="mt-4 border-t border-gray-100 pt-4 space-y-3">
+                            <div class="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-3 py-2 text-xs">
+                                <span class="material-symbols-outlined text-sm mt-0.5">warning</span>
+                                <span>Cambiar el slug invalida todos los QR impresos y enlaces compartidos. No hay redirección automática.</span>
+                            </div>
+
+                            <SlugInput
+                                v-model="slugForm.slug"
+                                :url-prefix="urlPrefix"
+                                :auto-suggest-from-name="false"
+                                :ignore-current-slug="restaurant.slug"
+                                label="Nuevo slug"
+                                @update:available="slugAvailable = $event"
+                            />
+                            <p v-if="slugForm.errors.slug" class="text-xs text-red-500">{{ slugForm.errors.slug }}</p>
+
+                            <label class="flex items-start gap-2 text-xs text-gray-700">
+                                <input v-model="slugForm.confirm" type="checkbox" class="mt-0.5" />
+                                <span>Entiendo que los enlaces y QR anteriores dejarán de funcionar.</span>
+                            </label>
+                            <p v-if="slugForm.errors.confirm" class="text-xs text-red-500">{{ slugForm.errors.confirm }}</p>
+
+                            <div class="flex gap-2">
+                                <button
+                                    @click="submitSlugRename"
+                                    :disabled="slugForm.processing || !slugAvailable || !slugForm.confirm || slugForm.slug === restaurant.slug"
+                                    class="flex-1 bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-3 py-2 text-sm transition-colors disabled:opacity-60"
+                                >
+                                    {{ slugForm.processing ? 'Guardando…' : 'Confirmar cambio' }}
+                                </button>
+                                <button
+                                    @click="showSlugRename = false; slugForm.slug = restaurant.slug"
+                                    class="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
                             </div>
                         </div>
-                        <button
-                            @click="showResetPasswordModal = true"
-                            class="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
-                        >
-                            <span class="material-symbols-outlined text-base">lock_reset</span>
-                            Restablecer contraseña
-                        </button>
                     </div>
-                    <p v-else class="text-sm text-gray-400">Sin administrador asignado.</p>
-                </div>
-
-                <!-- Access token -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-                    <h2 class="text-sm font-semibold text-gray-900 mb-3">Access Token (API)</h2>
-                    <div class="bg-gray-50 rounded-xl p-3 font-mono text-xs text-gray-700 break-all mb-3">
-                        {{ showToken ? restaurant.access_token : '••••••••••••••••' }}
-                    </div>
-                    <div class="flex gap-2 mb-2">
-                        <button
-                            @click="showToken = !showToken"
-                            class="flex-1 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                            {{ showToken ? 'Ocultar' : 'Mostrar' }}
-                        </button>
-                        <button
-                            @click="copyToken"
-                            class="flex-1 text-sm font-semibold px-3 py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
-                        >
-                            <span class="material-symbols-outlined text-base">content_copy</span>
-                            Copiar
-                        </button>
-                    </div>
-                    <button
-                        @click="showRegenerateModal = true"
-                        class="w-full text-sm font-semibold px-3 py-2 rounded-xl border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
-                    >
-                        <span class="material-symbols-outlined text-base">refresh</span>
-                        Regenerar token
-                    </button>
-                </div>
-
-                <!-- Status & Billing -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-                    <h2 class="text-sm font-semibold text-gray-900 mb-3">Billing</h2>
-                    <div class="space-y-2 text-sm text-gray-600">
-                        <div class="flex justify-between">
-                            <span class="text-gray-500">Status</span>
-                            <span
-                                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                                :class="{
-                                    'bg-green-50 text-green-700': restaurant.status === 'active',
-                                    'bg-amber-50 text-amber-700': restaurant.status === 'past_due' || restaurant.status === 'grace_period',
-                                    'bg-red-50 text-red-700': restaurant.status === 'suspended' || restaurant.status === 'disabled',
-                                    'bg-gray-100 text-gray-600': restaurant.status === 'canceled' || restaurant.status === 'incomplete',
-                                }"
-                            >{{ restaurant.status }}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-500">Plan</span>
-                            <span class="font-medium text-gray-900">{{ restaurant.plan?.name ?? 'Sin plan' }}</span>
-                        </div>
-                        <div v-if="restaurant.grace_period_ends_at" class="flex justify-between">
-                            <span class="text-gray-500">Gracia vence</span>
-                            <span>{{ formatDate(restaurant.grace_period_ends_at) }}</span>
-                        </div>
-                        <div v-if="restaurant.stripe_id" class="flex justify-between">
-                            <span class="text-gray-500">Stripe</span>
-                            <span class="font-mono text-xs">{{ restaurant.stripe_id }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Metadata -->
-                <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-                    <h2 class="text-sm font-semibold text-gray-900 mb-3">Información</h2>
-                    <div class="space-y-2 text-sm text-gray-600">
-                        <div class="flex justify-between">
-                            <span class="text-gray-500">ID</span>
-                            <span class="font-mono">{{ restaurant.id }}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-500">Creado</span>
-                            <span>{{ new Date(restaurant.created_at).toLocaleDateString('es-MX') }}</span>
-                        </div>
-                    </div>
-                </div>
+                </section>
             </div>
         </div>
-        <!-- Regenerate Token Modal -->
-        <Teleport to="body">
-            <div
-                v-if="showRegenerateModal"
-                class="fixed inset-0 z-50 flex items-center justify-center"
-            >
-                <!-- Backdrop -->
-                <div class="absolute inset-0 bg-black/40" @click="showRegenerateModal = false"></div>
-                <!-- Modal -->
-                <div class="relative bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-amber-600">warning</span>
-                        </div>
-                        <h3 class="text-lg font-bold text-gray-900">Regenerar token</h3>
-                    </div>
-                    <p class="text-sm text-gray-600 mb-6">
-                        Esta acción generará un nuevo token de acceso. El token anterior dejará de funcionar inmediatamente y las integraciones activas perderán acceso. Esta acción no se puede deshacer.
-                    </p>
-                    <div class="flex gap-3 justify-end">
-                        <button
-                            @click="showRegenerateModal = false"
-                            class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            @click="regenerateToken"
-                            :disabled="regenerating"
-                            class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-                        >
-                            {{ regenerating ? 'Regenerando...' : 'Regenerar' }}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </Teleport>
-
         <!-- Reset Admin Password Modal -->
         <Teleport to="body">
             <div

@@ -371,9 +371,9 @@ sino → usar restaurant.orders_limit / restaurant.max_branches (legacy)
 - SubscriptionController (admin restaurante)
 - Comandos artisan: billing:check-grace, billing:check-canceled, billing:send-reminders, billing:reconcile, billing:backfill-plans
 - Notificaciones: GraceExpiringNotification, PaymentFailedNotification, SuspendedNotification
-- Modificar AuthenticateRestaurantToken: usar canReceiveOrders()
-- Modificar EnsureTenantContext: redirigir a billing si suspended
-- Modificar HandleInertiaRequests: compartir status y subscription info
+- Modificar `ResolveTenantFromSlug` (middleware de la API pública, alias `tenant.slug`): usar `canReceiveOrders()` — responde 410 si el restaurante no puede operar.
+- Modificar `EnsureTenantContext`: redirigir a billing si suspended
+- Modificar `HandleInertiaRequests`: compartir status y subscription info
 
 ### SuperAdmin panel
 
@@ -392,7 +392,7 @@ sino → usar restaurant.orders_limit / restaurant.max_branches (legacy)
 ### Client SPA
 
 - Sin cambios en el código del client
-- El middleware AuthenticateRestaurantToken ya maneja la suspensión devolviendo 401
+- El middleware `ResolveTenantFromSlug` maneja la suspensión devolviendo **410 Gone** con `{code: "tenant_unavailable"}`. El SPA universal renderiza `TenantUnavailable.vue` al recibir ese código.
 - El client ya muestra errores de API al usuario
 
 ---

@@ -6,19 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\CreateRestaurantRequest;
 use App\Http\Requests\SuperAdmin\ResetAdminPasswordRequest;
 use App\Http\Requests\SuperAdmin\UpdateRestaurantLimitsRequest;
+use App\Http\Requests\SuperAdmin\UpdateRestaurantSlugRequest;
 use App\Models\BillingAudit;
-use App\Models\BillingSetting;
 use App\Models\Branch;
-use App\Models\PaymentMethod;
 use App\Models\Plan;
 use App\Models\Restaurant;
 use App\Models\Scopes\TenantScope;
 use App\Models\User;
+use App\Notifications\VerifyEmailNotification;
 use App\Services\LimitService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -29,6 +27,7 @@ class RestaurantController extends Controller
     public function index(Request $request): Response
     {
         $query = Restaurant::query()
+            ->withPeriodOrdersCount()
             ->withCount([
                 'branches as active_branch_count' => fn ($q) => $q
                     ->withoutGlobalScope(TenantScope::class)
@@ -39,16 +38,61 @@ class RestaurantController extends Controller
             $query->where('is_active', $request->boolean('status'));
         }
 
-        $restaurants = $query->latest()->paginate(20)->withQueryString();
+        $alert = $request->string('alert')->toString();
 
-        $restaurants->each(function (Restaurant $restaurant): void {
-            $restaurant->period_orders_count = $this->limitService->orderCountInPeriod($restaurant);
-        });
+        $this->applyAlertFilter($query, $alert);
+
+        // per_page restringido a un whitelist para evitar queries abusivas.
+        $perPage = (int) $request->input('per_page', 20);
+        if (! in_array($perPage, [20, 50, 100], true)) {
+            $perPage = 20;
+        }
+
+        $restaurants = $query->latest()->paginate($perPage)->withQueryString();
 
         return Inertia::render('SuperAdmin/Restaurants/Index', [
             'restaurants' => $restaurants,
-            'filters' => $request->only('status'),
+            'filters' => array_merge(
+                $request->only('status', 'alert'),
+                ['per_page' => $perPage],
+            ),
         ]);
+    }
+
+    private function applyAlertFilter($query, string $alert): void
+    {
+        match ($alert) {
+            // Paquete A — acciones urgentes
+            'grace_expiring' => $query
+                ->where('is_active', true)
+                ->where('status', 'grace_period')
+                ->whereBetween('grace_period_ends_at', [now(), now()->addDays(3)]),
+            'billing_manual' => $query
+                ->where('is_active', true)
+                ->where('billing_mode', 'manual'),
+            'new_this_week' => $query
+                ->where('is_active', true)
+                ->where('created_at', '>=', now()->subDays(7)),
+            'orders_near_limit' => $query
+                ->where('is_active', true)
+                ->where('orders_limit', '>', 0)
+                ->whereNotNull('orders_limit_start')
+                ->whereNotNull('orders_limit_end')
+                ->whereRaw('(SELECT COUNT(*) FROM orders
+                    WHERE orders.restaurant_id = restaurants.id
+                      AND orders.created_at BETWEEN restaurants.orders_limit_start AND restaurants.orders_limit_end
+                )::float / NULLIF(restaurants.orders_limit, 0) >= 0.8'),
+
+            // Estado general — mismos que los KPIs de la tab "Alertas"
+            'past_due' => $query->where('status', 'past_due'),
+            'grace_period' => $query->where('status', 'grace_period'),
+            'suspended' => $query->where('status', 'suspended'),
+            'no_subscription' => $query
+                ->whereNull('stripe_id')
+                ->where('status', '!=', 'disabled'),
+
+            default => null,
+        };
     }
 
     public function create(): Response
@@ -56,81 +100,33 @@ class RestaurantController extends Controller
         return Inertia::render('SuperAdmin/Restaurants/Create');
     }
 
-    public function store(CreateRestaurantRequest $request): RedirectResponse
-    {
+    public function store(
+        CreateRestaurantRequest $request,
+        \App\Services\Onboarding\RestaurantProvisioningService $provisioning,
+    ): RedirectResponse {
         $data = $request->validated();
-        $isManual = ($data['billing_mode'] ?? 'grace') === 'manual';
-        $data['slug'] = $this->generateUniqueSlug($data['name']);
 
-        $restaurant = DB::transaction(function () use ($request, $data, $isManual): Restaurant {
-            if ($isManual) {
-                $restaurant = Restaurant::create([
-                    'name' => $data['name'],
-                    'slug' => $data['slug'],
-                    'access_token' => hash('sha256', Str::random(40)),
-                    'is_active' => true,
-                    'plan_id' => null,
-                    'status' => 'active',
-                    'orders_limit' => $data['orders_limit'],
-                    'orders_limit_start' => $data['orders_limit_start'],
-                    'orders_limit_end' => $data['orders_limit_end'],
-                    'max_branches' => $data['max_branches'],
-                    'allows_delivery' => false,
-                    'allows_pickup' => true,
-                    'allows_dine_in' => false,
-                ]);
-            } else {
-                $gracePlan = Plan::gracePlan();
-                $graceDays = BillingSetting::getInt('initial_grace_period_days', 14);
+        $dto = new \App\Services\Onboarding\Dto\ProvisionRestaurantData(
+            source: 'super_admin',
+            restaurantName: $data['name'],
+            adminName: $data['admin_name'],
+            adminEmail: $data['admin_email'],
+            adminPassword: $data['password'],
+            billingMode: $data['billing_mode'] ?? 'grace',
+            ordersLimit: $data['orders_limit'] ?? null,
+            maxBranches: $data['max_branches'] ?? null,
+            ordersLimitStart: isset($data['orders_limit_start'])
+                ? \Carbon\Carbon::parse($data['orders_limit_start'])
+                : null,
+            ordersLimitEnd: isset($data['orders_limit_end'])
+                ? \Carbon\Carbon::parse($data['orders_limit_end'])
+                : null,
+            actorId: $request->user('superadmin')->id,
+            ipAddress: $request->ip(),
+            slug: $data['slug'] ?? null,
+        );
 
-                $restaurant = Restaurant::create([
-                    'name' => $data['name'],
-                    'slug' => $data['slug'],
-                    'access_token' => hash('sha256', Str::random(40)),
-                    'is_active' => true,
-                    'billing_mode' => 'subscription',
-                    'plan_id' => $gracePlan?->id,
-                    'status' => 'grace_period',
-                    'grace_period_ends_at' => now()->addDays($graceDays),
-                    'orders_limit' => $gracePlan?->orders_limit ?? 50,
-                    'orders_limit_start' => now()->startOfMonth(),
-                    'orders_limit_end' => now()->endOfMonth(),
-                    'max_branches' => $gracePlan?->max_branches ?? 1,
-                    'allows_delivery' => false,
-                    'allows_pickup' => true,
-                    'allows_dine_in' => false,
-                ]);
-            }
-
-            $user = new User([
-                'name' => $data['admin_name'],
-                'email' => $data['admin_email'],
-                'password' => $data['password'],
-            ]);
-            $user->role = 'admin';
-            $user->restaurant_id = $restaurant->id;
-            $user->save();
-
-            PaymentMethod::insert([
-                ['restaurant_id' => $restaurant->id, 'type' => 'cash', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
-                ['restaurant_id' => $restaurant->id, 'type' => 'terminal', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
-                ['restaurant_id' => $restaurant->id, 'type' => 'transfer', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
-            ]);
-
-            BillingAudit::log(
-                action: 'restaurant_created',
-                restaurantId: $restaurant->id,
-                actorType: 'super_admin',
-                actorId: $request->user('superadmin')->id,
-                payload: [
-                    'billing_mode' => $isManual ? 'manual' : 'grace',
-                    'plan' => $restaurant->plan?->name ?? 'manual',
-                ],
-                ipAddress: $request->ip(),
-            );
-
-            return $restaurant;
-        });
+        $restaurant = $provisioning->provision($dto);
 
         return redirect()->route('super.restaurants.show', $restaurant)
             ->with('success', 'Restaurante creado exitosamente.');
@@ -158,7 +154,7 @@ class RestaurantController extends Controller
             ->get();
 
         return Inertia::render('SuperAdmin/Restaurants/Show', [
-            'restaurant' => $restaurant->makeVisible('access_token'),
+            'restaurant' => $restaurant,
             'admin' => $admin,
             'orders_count' => $ordersCount,
             'orders_limit' => $this->limitService->getOrdersLimit($restaurant),
@@ -200,15 +196,6 @@ class RestaurantController extends Controller
             : 'Límites manuales actualizados.';
 
         return back()->with('success', $message);
-    }
-
-    public function regenerateToken(Restaurant $restaurant): RedirectResponse
-    {
-        $restaurant->update([
-            'access_token' => hash('sha256', Str::random(40)),
-        ]);
-
-        return back()->with('success', 'Token regenerado exitosamente.');
     }
 
     public function toggleActive(Request $request, Restaurant $restaurant): RedirectResponse
@@ -351,22 +338,52 @@ class RestaurantController extends Controller
         return back()->with('success', 'Contraseña del administrador actualizada.');
     }
 
-    private function generateUniqueSlug(string $name): string
+    public function sendVerification(Request $request, Restaurant $restaurant): RedirectResponse
     {
-        $base = Str::slug($name);
+        $admin = User::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('role', 'admin')
+            ->firstOrFail();
 
-        if ($base === '') {
-            $base = 'restaurante';
+        $admin->notify(new VerifyEmailNotification);
+
+        BillingAudit::log(
+            action: 'verification_email_sent_manually',
+            restaurantId: $restaurant->id,
+            actorType: 'super_admin',
+            actorId: $request->user('superadmin')->id,
+            payload: ['admin_email' => $admin->email],
+            ipAddress: $request->ip(),
+        );
+
+        return back()->with('success', 'Correo de verificación enviado al administrador.');
+    }
+
+    /**
+     * Rename a restaurant's public slug. Breaks any pre-existing QR codes
+     * and shared links, so the UI requires an explicit confirmation step.
+     * Audited on every change.
+     */
+    public function renameSlug(UpdateRestaurantSlugRequest $request, Restaurant $restaurant): RedirectResponse
+    {
+        $old = $restaurant->slug;
+        $new = $request->validated('slug');
+
+        if ($old === $new) {
+            return back()->with('success', 'El slug no cambió.');
         }
 
-        $slug = $base;
-        $suffix = 2;
+        $restaurant->update(['slug' => $new]);
 
-        while (Restaurant::query()->withoutGlobalScope(TenantScope::class)->where('slug', $slug)->exists()) {
-            $slug = $base.'-'.$suffix;
-            $suffix++;
-        }
+        BillingAudit::log(
+            action: 'restaurant_slug_renamed',
+            restaurantId: $restaurant->id,
+            actorType: 'super_admin',
+            actorId: $request->user('superadmin')->id,
+            payload: ['old_slug' => $old, 'new_slug' => $new],
+            ipAddress: $request->ip(),
+        );
 
-        return $slug;
+        return back()->with('success', "Slug actualizado de «{$old}» a «{$new}».");
     }
 }

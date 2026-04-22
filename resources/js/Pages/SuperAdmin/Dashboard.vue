@@ -594,47 +594,150 @@ const totalAlerts = computed(() => {
 
         <div v-if="activeTab === 'alerts'">
 
-            <!-- Alert Summary Cards -->
+            <!-- ─── Alertas accionables (Paquete A) ─── -->
+            <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Alertas accionables</h3>
             <div class="grid grid-cols-4 gap-5 mb-8">
-                <div class="bg-white rounded-xl border-l-4 border-l-yellow-400 border border-gray-100 shadow-sm p-6">
+                <!-- Gracia expira pronto -->
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'grace_expiring' })"
+                    class="bg-white rounded-xl border-l-4 border-l-red-500 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-red-600" style="font-variation-settings:'FILL' 1">hourglass_bottom</span>
+                        </div>
+                        <span class="text-sm font-medium text-gray-500">Gracia expira ≤3 días</span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.grace_expiring_soon || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
+
+                <!-- Cerca del límite -->
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'orders_near_limit' })"
+                    class="bg-white rounded-xl border-l-4 border-l-amber-500 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-amber-600" style="font-variation-settings:'FILL' 1">speed</span>
+                        </div>
+                        <span class="text-sm font-medium text-gray-500">≥80% del límite</span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.orders_near_limit || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
+
+                <!-- Modo manual -->
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'billing_manual' })"
+                    class="bg-white rounded-xl border-l-4 border-l-gray-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-gray-600" style="font-variation-settings:'FILL' 1">settings</span>
+                        </div>
+                        <span class="text-sm font-medium text-gray-500">Modo manual</span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.billing_manual || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
+
+                <!-- Nuevos esta semana -->
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'new_this_week' })"
+                    class="bg-white rounded-xl border-l-4 border-l-blue-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-blue-600" style="font-variation-settings:'FILL' 1">fiber_new</span>
+                        </div>
+                        <span class="text-sm font-medium text-gray-500">Nuevos en 7 días</span>
+                    </div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <p class="text-3xl font-bold text-gray-900">{{ alerts?.new_this_week?.total || 0 }}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                <span class="font-medium">{{ alerts?.new_this_week?.self_signup || 0 }}</span> self +
+                                <span class="font-medium">{{ alerts?.new_this_week?.super_admin || 0 }}</span> admin
+                            </p>
+                        </div>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
+            </div>
+
+            <!-- ─── Estado general ─── -->
+            <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Estado general</h3>
+            <div class="grid grid-cols-4 gap-5 mb-8">
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'past_due' })"
+                    class="bg-white rounded-xl border-l-4 border-l-yellow-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
                     <div class="flex items-center gap-3 mb-3">
                         <div class="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center">
                             <span class="material-symbols-outlined text-yellow-600" style="font-variation-settings:'FILL' 1">warning</span>
                         </div>
                         <span class="text-sm font-medium text-gray-500">Past due</span>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900">{{ alerts?.past_due || 0 }}</p>
-                </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.past_due || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
 
-                <div class="bg-white rounded-xl border-l-4 border-l-orange-400 border border-gray-100 shadow-sm p-6">
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'grace_period' })"
+                    class="bg-white rounded-xl border-l-4 border-l-orange-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
                     <div class="flex items-center gap-3 mb-3">
                         <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
                             <span class="material-symbols-outlined text-orange-600" style="font-variation-settings:'FILL' 1">schedule</span>
                         </div>
                         <span class="text-sm font-medium text-gray-500">Grace period</span>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900">{{ alerts?.grace_period || 0 }}</p>
-                </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.grace_period || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
 
-                <div class="bg-white rounded-xl border-l-4 border-l-red-400 border border-gray-100 shadow-sm p-6">
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'suspended' })"
+                    class="bg-white rounded-xl border-l-4 border-l-red-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
                     <div class="flex items-center gap-3 mb-3">
                         <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
                             <span class="material-symbols-outlined text-red-600" style="font-variation-settings:'FILL' 1">block</span>
                         </div>
                         <span class="text-sm font-medium text-gray-500">Suspendidos</span>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900">{{ alerts?.suspended || 0 }}</p>
-                </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.suspended || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
 
-                <div class="bg-white rounded-xl border-l-4 border-l-blue-400 border border-gray-100 shadow-sm p-6">
+                <Link
+                    :href="route('super.restaurants.index', { alert: 'no_subscription' })"
+                    class="bg-white rounded-xl border-l-4 border-l-blue-400 border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow group"
+                >
                     <div class="flex items-center gap-3 mb-3">
                         <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
                             <span class="material-symbols-outlined text-blue-600" style="font-variation-settings:'FILL' 1">help_outline</span>
                         </div>
                         <span class="text-sm font-medium text-gray-500">Sin suscripción</span>
                     </div>
-                    <p class="text-3xl font-bold text-gray-900">{{ alerts?.no_subscription || 0 }}</p>
-                </div>
+                    <div class="flex items-end justify-between">
+                        <p class="text-3xl font-bold text-gray-900">{{ alerts?.no_subscription || 0 }}</p>
+                        <span class="material-symbols-outlined text-gray-300 group-hover:text-[#FF5722] transition-colors">arrow_forward</span>
+                    </div>
+                </Link>
             </div>
 
             <!-- Restaurantes en riesgo -->

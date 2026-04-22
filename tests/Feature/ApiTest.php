@@ -13,6 +13,11 @@ use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * Feature tests for the public storefront API.
+ * Tenant is resolved by slug from the URL (`/api/public/{slug}/...`);
+ * cross-tenant isolation is also covered by `PublicSlugResolutionTest`.
+ */
 class ApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -20,38 +25,16 @@ class ApiTest extends TestCase
     private function restaurant(array $attributes = []): Restaurant
     {
         return Restaurant::factory()->create(array_merge([
-            'access_token' => 'test-token-123',
             'is_active' => true,
         ], $attributes));
     }
 
-    private function authHeaders(Restaurant $restaurant): array
+    private function api(Restaurant $r, string $path): string
     {
-        return ['Authorization' => 'Bearer '.$restaurant->access_token];
+        return "/api/public/{$r->slug}/{$path}";
     }
 
-    // ─── Auth middleware ──────────────────────────────────────────────────────
-
-    public function test_requests_without_token_return_401(): void
-    {
-        $this->getJson('/api/restaurant')->assertUnauthorized();
-    }
-
-    public function test_requests_with_invalid_token_return_401(): void
-    {
-        $this->getJson('/api/restaurant', ['Authorization' => 'Bearer invalid-token'])
-            ->assertUnauthorized();
-    }
-
-    public function test_requests_with_inactive_restaurant_return_401(): void
-    {
-        $restaurant = $this->restaurant(['is_active' => false]);
-
-        $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
-            ->assertUnauthorized();
-    }
-
-    // ─── GET /api/restaurant ─────────────────────────────────────────────────
+    // ─── GET /api/public/{slug}/restaurant ───────────────────────────────────
 
     public function test_get_restaurant_returns_correct_structure(): void
     {
@@ -69,7 +52,7 @@ class ApiTest extends TestCase
             'is_active' => false,
         ]);
 
-        $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
+        $this->getJson($this->api($restaurant, 'restaurant'))
             ->assertOk()
             ->assertJsonStructure([
                 'data' => [
@@ -106,7 +89,7 @@ class ApiTest extends TestCase
 
         $restaurant->orders()->createMany([$orderData, $orderData]);
 
-        $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
+        $this->getJson($this->api($restaurant, 'restaurant'))
             ->assertOk()
             ->assertJsonPath('data.orders_limit_reached', true)
             ->assertJsonPath('data.limit_reason', 'limit_reached');
@@ -119,7 +102,7 @@ class ApiTest extends TestCase
             'orders_limit_end' => now()->subDays(3),
         ]);
 
-        $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
+        $this->getJson($this->api($restaurant, 'restaurant'))
             ->assertOk()
             ->assertJsonPath('data.orders_limit_reached', true)
             ->assertJsonPath('data.limit_reason', 'period_expired');
@@ -132,13 +115,13 @@ class ApiTest extends TestCase
             'orders_limit_end' => now()->addMonth(),
         ]);
 
-        $this->getJson('/api/restaurant', $this->authHeaders($restaurant))
+        $this->getJson($this->api($restaurant, 'restaurant'))
             ->assertOk()
             ->assertJsonPath('data.orders_limit_reached', true)
             ->assertJsonPath('data.limit_reason', 'period_not_started');
     }
 
-    // ─── GET /api/menu ───────────────────────────────────────────────────────
+    // ─── GET /api/public/{slug}/menu ─────────────────────────────────────────
 
     public function test_get_menu_returns_only_active_categories_and_products(): void
     {
@@ -164,7 +147,7 @@ class ApiTest extends TestCase
             'is_active' => false,
         ]);
 
-        $response = $this->getJson('/api/menu', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'menu'))->assertOk();
 
         $data = $response->json('data');
         $this->assertCount(1, $data);
@@ -187,7 +170,7 @@ class ApiTest extends TestCase
             'production_cost' => 50.00,
         ]);
 
-        $response = $this->getJson('/api/menu', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'menu'))->assertOk();
 
         $product = $response->json('data.0.products.0');
         $this->assertArrayNotHasKey('production_cost', $product);
@@ -211,7 +194,7 @@ class ApiTest extends TestCase
         ]);
         ModifierOption::factory()->create(['modifier_group_id' => $group->id]);
 
-        $response = $this->getJson('/api/menu', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'menu'))->assertOk();
 
         $response->assertJsonStructure([
             'data' => [
@@ -238,13 +221,13 @@ class ApiTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'menu'))->assertOk();
         $ids = collect($response->json('data'))->pluck('id');
 
         $this->assertNotContains($otherCategory->id, $ids);
     }
 
-    // ─── GET /api/branches ───────────────────────────────────────────────────
+    // ─── GET /api/public/{slug}/branches ─────────────────────────────────────
 
     public function test_get_branches_returns_only_active_branches(): void
     {
@@ -259,7 +242,7 @@ class ApiTest extends TestCase
             'is_active' => false,
         ]);
 
-        $response = $this->getJson('/api/branches', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'branches'))->assertOk();
 
         $data = $response->json('data');
         $this->assertCount(1, $data);
@@ -274,7 +257,7 @@ class ApiTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->getJson('/api/branches', $this->authHeaders($restaurant))
+        $this->getJson($this->api($restaurant, 'branches'))
             ->assertOk()
             ->assertJsonStructure([
                 'data' => [
@@ -296,7 +279,7 @@ class ApiTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/branches', $this->authHeaders($restaurant))->assertOk();
+        $response = $this->getJson($this->api($restaurant, 'branches'))->assertOk();
 
         $this->assertCount(0, $response->json('data'));
     }

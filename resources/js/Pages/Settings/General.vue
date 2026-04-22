@@ -1,13 +1,31 @@
 <script setup>
-import { ref } from 'vue'
-import { Head, useForm } from '@inertiajs/vue3'
+import { computed, ref } from 'vue'
+import { Head, useForm, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import SettingsLayout from '@/Components/SettingsLayout.vue'
 import ToggleSwitch from '@/Components/ToggleSwitch.vue'
+import QrCode from '@/Components/QrCode.vue'
 
 const props = defineProps({
     restaurant: Object,
 })
+
+const page = usePage()
+const menuBaseUrl = computed(() => String(page.props.menu_base_url ?? '').replace(/\/$/, ''))
+const publicMenuUrl = computed(() => `${menuBaseUrl.value}/r/${props.restaurant.slug}`)
+
+const qrRef = ref(null)
+const copied = ref(false)
+
+function copyPublicUrl() {
+    navigator.clipboard.writeText(publicMenuUrl.value)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 1500)
+}
+
+function downloadQr() {
+    qrRef.value?.download()
+}
 
 const IMAGE_MAX_MB = 2
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp'
@@ -51,6 +69,50 @@ function onLogoChange(e) {
         </div>
 
         <SettingsLayout>
+            <!-- Public menu URL + QR -->
+            <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+                <h2 class="text-lg font-bold text-gray-900 mb-1">Tu enlace público</h2>
+                <p class="text-sm text-gray-500 mb-5">Comparte este QR o URL para que tus clientes vean tu menú en cualquier dispositivo.</p>
+
+                <div class="flex flex-col md:flex-row gap-6 items-start">
+                    <div class="flex-shrink-0">
+                        <QrCode
+                            ref="qrRef"
+                            :value="publicMenuUrl"
+                            :size="200"
+                            :file-name="`${restaurant.slug}-qr.png`"
+                        />
+                    </div>
+                    <div class="flex-1 w-full space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">URL del menú</label>
+                            <div class="bg-gray-50 rounded-xl p-3 font-mono text-sm text-gray-800 break-all">
+                                {{ publicMenuUrl }}
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button
+                                type="button"
+                                @click="copyPublicUrl"
+                                class="flex-1 text-sm font-semibold px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                                {{ copied ? '¡Copiado!' : 'Copiar URL' }}
+                            </button>
+                            <button
+                                type="button"
+                                @click="downloadQr"
+                                class="flex-1 text-sm font-semibold px-4 py-2.5 rounded-xl bg-[#FF5722] hover:bg-[#D84315] text-white transition-colors"
+                            >
+                                Descargar QR (PNG)
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-400">
+                            ¿Necesitas cambiar el enlace? Contacta al equipo de PideAquí. Los cambios invalidan QR y links ya compartidos.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
                 <h2 class="text-lg font-bold text-gray-900 mb-6">Información general</h2>
 

@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\ResetPasswordController;
+use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\CancellationController;
 use App\Http\Controllers\CategoryController;
@@ -50,11 +52,29 @@ Route::middleware('guest')->group(function (): void {
 
     Route::get('/reset-password/{token}', [ResetPasswordController::class, 'create'])->name('password.reset');
     Route::post('/reset-password', [ResetPasswordController::class, 'store'])->middleware('throttle:5,1')->name('password.update');
+
+    Route::get('/register', [RegisterController::class, 'create'])->name('register');
+    Route::post('/register', [RegisterController::class, 'store'])->middleware('throttle:3,1')->name('register.store');
 });
 
-// ─── Admin Restaurante — Todos los roles (autenticado + tenant) ──────────────
-Route::middleware(['auth', 'tenant'])->group(function (): void {
+// ─── Auth routes (auth only — usuario puede salir incluso sin verificar) ──────
+Route::middleware('auth')->group(function (): void {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
+
+    Route::get('/email/verify', [VerifyEmailController::class, 'notice'])
+        ->name('verification.notice');
+
+    Route::get('/email/verify/{id}/{hash}', [VerifyEmailController::class, 'verify'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+
+    Route::post('/email/verification-notification', [VerifyEmailController::class, 'send'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+});
+
+// ─── Admin Restaurante — Todos los roles (autenticado + verificado + tenant) ──
+Route::middleware(['auth', 'verified', 'tenant'])->group(function (): void {
 
     // Dashboard — ambos roles (controller filtra métricas por rol)
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -228,8 +248,13 @@ Route::prefix('super')->name('super.')->group(function (): void {
         Route::get('/restaurants/{restaurant}', [SuperAdminRestaurantController::class, 'show'])->name('restaurants.show');
         Route::put('/restaurants/{restaurant}/limits', [SuperAdminRestaurantController::class, 'updateLimits'])->name('restaurants.update-limits');
         Route::patch('/restaurants/{restaurant}/toggle', [SuperAdminRestaurantController::class, 'toggleActive'])->name('restaurants.toggle');
-        Route::post('/restaurants/{restaurant}/regenerate-token', [SuperAdminRestaurantController::class, 'regenerateToken'])->name('restaurants.regenerate-token');
         Route::put('/restaurants/{restaurant}/reset-password', [SuperAdminRestaurantController::class, 'resetAdminPassword'])->name('restaurants.reset-password');
+        Route::post('/restaurants/{restaurant}/send-verification', [SuperAdminRestaurantController::class, 'sendVerification'])->name('restaurants.send-verification');
+        Route::patch('/restaurants/{restaurant}/slug', [SuperAdminRestaurantController::class, 'renameSlug'])->name('restaurants.rename-slug');
+
+        // Platform settings (global, not tenant-scoped)
+        Route::get('/platform-settings', [\App\Http\Controllers\SuperAdmin\PlatformSettingsController::class, 'index'])->name('platform-settings');
+        Route::put('/platform-settings', [\App\Http\Controllers\SuperAdmin\PlatformSettingsController::class, 'update'])->name('platform-settings.update');
 
         // Planes
         Route::get('/plans', [SuperAdminPlanController::class, 'index'])->name('plans.index');

@@ -195,7 +195,7 @@ function submit() {
                         >Cancelar</a>
                         <button
                             type="submit"
-                            :disabled="form.processing"
+                            :disabled="form.processing || !slugAvailable || !form.slug"
                             class="bg-[#FF5722] hover:bg-[#D84315] text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors disabled:opacity-60"
                         >
                             {{ form.processing ? 'Creando...' : 'Crear restaurante' }}

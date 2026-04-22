@@ -17,14 +17,8 @@ class DeliveryServiceTest extends TestCase
     private function restaurant(array $attributes = []): Restaurant
     {
         return Restaurant::factory()->create(array_merge([
-            'access_token' => 'test-token-del',
             'is_active' => true,
         ], $attributes));
-    }
-
-    private function authHeaders(Restaurant $restaurant): array
-    {
-        return ['Authorization' => 'Bearer '.$restaurant->access_token];
     }
 
     private function branchAt(Restaurant $restaurant, float $lat, float $lng, bool $active = true): Branch
@@ -70,7 +64,7 @@ class DeliveryServiceTest extends TestCase
     {
         $restaurant = $this->restaurant();
 
-        $this->postJson('/api/delivery/calculate', [], $this->authHeaders($restaurant))
+        $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['latitude', 'longitude']);
     }
@@ -79,20 +73,21 @@ class DeliveryServiceTest extends TestCase
     {
         $restaurant = $this->restaurant();
 
-        $this->postJson('/api/delivery/calculate', [
+        $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 91,
             'longitude' => -99,
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['latitude']);
     }
 
-    public function test_unauthenticated_request_returns_401(): void
+    public function test_unknown_slug_returns_404(): void
     {
-        $this->postJson('/api/delivery/calculate', [
+        $this->postJson('/api/public/ghost-slug/delivery/calculate', [
             'latitude' => 20.0,
             'longitude' => -99.0,
-        ])->assertUnauthorized();
+        ])->assertNotFound()
+            ->assertJsonPath('code', 'tenant_not_found');
     }
 
     // ─── Single branch (Google Maps driving distance) ──────────────────────
@@ -106,10 +101,10 @@ class DeliveryServiceTest extends TestCase
         $this->addRanges($restaurant);
 
         // Client is very close
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -134,10 +129,10 @@ class DeliveryServiceTest extends TestCase
         $this->addRanges($restaurant); // Max range is 8 km
 
         // Client is ~200 km away (Mexico City)
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 19.432608,
             'longitude' => -99.133209,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonPath('data.is_in_coverage', false);
@@ -159,10 +154,10 @@ class DeliveryServiceTest extends TestCase
         ]);
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonPath('data.branch_id', $nearBranch->id)
@@ -186,10 +181,10 @@ class DeliveryServiceTest extends TestCase
         ]);
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonPath('data.delivery_cost', 30)
@@ -206,10 +201,10 @@ class DeliveryServiceTest extends TestCase
         $this->branchAt($restaurant, 20.650000, -103.340000, false);
         $this->addRanges($restaurant);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonPath('data.branch_id', $activeBranch->id);
@@ -225,10 +220,10 @@ class DeliveryServiceTest extends TestCase
         $this->branchAt($restaurant, 20.659698, -103.349609);
         $this->addRanges($restaurant);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()->assertJsonPath('data.is_open', false);
     }
@@ -249,10 +244,10 @@ class DeliveryServiceTest extends TestCase
             'is_closed' => true,
         ]);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertOk()
             ->assertJsonPath('data.is_open', false)
@@ -269,10 +264,10 @@ class DeliveryServiceTest extends TestCase
         $mockGoogle->method('getDistances')->willThrowException(new \RuntimeException('Google Maps unavailable'));
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertStatus(422);
     }
@@ -289,10 +284,10 @@ class DeliveryServiceTest extends TestCase
         ]);
         $this->instance(GoogleMapsService::class, $mockGoogle);
 
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         $response->assertStatus(422);
     }
@@ -309,10 +304,10 @@ class DeliveryServiceTest extends TestCase
         $this->branchAt($otherRestaurant, 20.659698, -103.349609);
 
         // With no branches, DeliveryService will throw or return empty; test expects a handled response
-        $response = $this->postJson('/api/delivery/calculate', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/delivery/calculate", [
             'latitude' => 20.660000,
             'longitude' => -103.350000,
-        ], $this->authHeaders($restaurant));
+        ]);
 
         // No active branches → service throws, API returns 422 or 404
         $response->assertStatus(422);

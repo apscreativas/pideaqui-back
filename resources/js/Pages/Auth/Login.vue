@@ -103,6 +103,11 @@ function submit() {
                         {{ form.processing ? 'Iniciando sesión…' : 'Iniciar sesión' }}
                     </button>
                 </form>
+
+                <div class="text-center text-sm text-gray-600 pt-5 mt-5 border-t border-gray-100">
+                    ¿No tienes cuenta?
+                    <Link :href="route('register')" class="text-[#FF5722] font-semibold hover:text-[#D84315]">Crear cuenta</Link>
+                </div>
             </div>
 
         </div>

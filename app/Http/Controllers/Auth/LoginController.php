@@ -34,7 +34,9 @@ class LoginController extends Controller
 
         // Try restaurant admin
         if (Auth::guard('web')->attempt($credentials, $remember)) {
-            if (! Auth::guard('web')->user()->restaurant_id) {
+            $user = Auth::guard('web')->user();
+
+            if (! $user->restaurant_id) {
                 Auth::guard('web')->logout();
 
                 return back()->withErrors([
@@ -43,6 +45,10 @@ class LoginController extends Controller
             }
 
             $request->session()->regenerate();
+
+            if (! $user->hasVerifiedEmail()) {
+                return redirect()->route('verification.notice');
+            }
 
             return redirect()->intended(route('dashboard'));
         }

@@ -304,7 +304,6 @@ class SpecialDateTest extends TestCase
     public function test_api_returns_closure_reason_for_holiday(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'holiday-api-test',
             'is_active' => true,
         ]);
 
@@ -321,9 +320,7 @@ class SpecialDateTest extends TestCase
             'date' => now()->toDateString(),
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'Authorization' => 'Bearer '.$restaurant->access_token,
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertOk();
         $data = $response->json('data');
@@ -344,7 +341,6 @@ class SpecialDateTest extends TestCase
         $this->instance(GoogleMapsService::class, $mock);
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'order-holiday-test',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_pickup' => true,
@@ -373,7 +369,7 @@ class SpecialDateTest extends TestCase
             'date' => $tomorrow->toDateString(),
         ]);
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'cust-1', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -385,7 +381,7 @@ class SpecialDateTest extends TestCase
                 'unit_price' => 50.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['scheduled_at']);
@@ -400,7 +396,6 @@ class SpecialDateTest extends TestCase
         $this->instance(GoogleMapsService::class, $mock);
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'order-special-test',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_pickup' => true,
@@ -429,7 +424,7 @@ class SpecialDateTest extends TestCase
         ]);
 
         // Schedule at 18:00 — outside special hours.
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'cust-2', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -441,7 +436,7 @@ class SpecialDateTest extends TestCase
                 'unit_price' => 30.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['scheduled_at']);

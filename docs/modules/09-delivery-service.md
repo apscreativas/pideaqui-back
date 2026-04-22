@@ -23,7 +23,7 @@ Este es el módulo más costoso en términos de uso de APIs externas. Está dise
 ```
 Input:
   - client_latitude, client_longitude
-  - restaurant_id (del access_token)
+  - restaurant_id (inyectado por middleware `ResolveTenantFromSlug` desde `/api/public/{slug}/*`)
 
 PASO 1: Cargar sucursales activas del restaurante
   ↓

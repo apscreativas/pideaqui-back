@@ -41,6 +41,32 @@ Bloquea si:
 
 **No bloquea** por alcanzar `orders_limit`. Eso es una preocupación de capacidad, no de estado del servicio. El POS tampoco se bloquea por `orders_limit_reached` (ver `14-pos.md`).
 
+### Política `status=suspended` (decisión oficial Abr 2026)
+
+Un restaurante suspendido **NO puede operar** pero **SÍ puede preparar su negocio**. Esta es una decisión intencional para reducir fricción al reactivar una cuenta.
+
+**Lo que está bloqueado (respetan `canOperate()` / `canReceiveOrders()`):**
+- API pública `/api/public/{slug}/*` → middleware `ResolveTenantFromSlug` responde 410 `{code: "tenant_unavailable"}`.
+- Creación de pedidos manuales desde admin (`OrderService::store` valida).
+- Creación de ventas POS (`PosSaleService::store` valida).
+
+**Lo que queda permitido (intencional — `canOperate()` NO se consulta):**
+- Editar catálogo (productos, categorías, promociones, cupones, modificadores).
+- Editar branding (logo, colores), horarios regulares, fechas especiales.
+- Gestionar usuarios del restaurante y sus roles.
+- Configurar métodos de entrega, tarifas de envío, métodos de pago.
+- Ver historial de pedidos, estadísticas, cancelaciones, gastos.
+
+El admin panel muestra paywall via `HandleInertiaRequests` (`billing.must_show_billing`, `billing.block_reason`, `billing.block_message`) para que el usuario vea claramente qué está bloqueado y cómo pagar, sin impedirle preparar la vuelta. Al pagar y transicionar a `active`, su catálogo actualizado ya está listo.
+
+Documentado en `ARCHITECTURE.md §2.7`.
+
+### Comando programado `billing:check-grace`
+
+`App\Console\Commands\CheckGracePeriodCommand` (ruta: `routes/console.php:12`, schedule `daily()->at('06:00')`).
+
+Transiciona a `suspended` todos los restaurantes con `status='grace_period'` y `grace_period_ends_at < now()`. Cada transición audita `BillingAudit` con action `suspended` y payload `{reason: 'grace_period_expired', expired_at}`.
+
 ---
 
 ## Schema
@@ -186,7 +212,7 @@ CRUD global de `billing_settings`:
 
 - **`updateLimits($id)`** — al cambiar de manual → subscription, si hay Stripe sub activa, la cancela también.
 
-- **`regenerateToken($id)`** — no billing, pero vive aquí.
+- **`renameSlug($id)`** — no billing, pero vive aquí. Cambia el slug del restaurante con confirmación explícita (checkbox `confirm` en el request). Audita `restaurant_slug_renamed` con `{old_slug, new_slug}`. Admin NO puede renombrar — solo SuperAdmin.
 
 ---
 

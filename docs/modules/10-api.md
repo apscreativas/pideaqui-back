@@ -1,36 +1,38 @@
 # Módulo 10 — API Pública (Frontend del Cliente)
 
-> Prefijo de rutas: `/api`
+> Prefijo de rutas: `/api/public/{slug}`
 > Archivo: `admin/routes/api.php`
-> Autenticación: Token de restaurante en header `Authorization: Bearer {access_token}`
+> Autenticación: slug del restaurante en la URL (sin headers de auth)
 
 ---
 
 ## Descripción General
 
-API REST consumida exclusivamente por el SPA del cliente (proyecto `client/`). Todas las rutas son públicas en el sentido de que no requieren login de usuario — en su lugar, se autentican con el `access_token` del restaurante.
-
-El token de acceso identifica al restaurante (tenant) en cada request. El backend resuelve el restaurante a partir del token y aplica el contexto de multitenancy.
+API REST consumida exclusivamente por el SPA universal del cliente (proyecto `client/`). El tenant se resuelve en runtime a partir del `slug` del restaurante en la URL. Un único bundle del SPA sirve a N restaurantes.
 
 **El `production_cost` de los productos NUNCA se devuelve en ningún endpoint de esta API.**
 
 ---
 
-## Autenticación
+## Autenticación / Resolución de Tenant
 
-Middleware personalizado: `AuthenticateRestaurantToken`
+Middleware personalizado: `ResolveTenantFromSlug` (alias `tenant.slug`)
 
 ```php
-// Header requerido en todos los requests
-Authorization: Bearer {access_token}
+// URL pattern
+GET /api/public/{slug}/restaurant
+POST /api/public/{slug}/orders
+…
 
 // El middleware:
-// 1. Extrae el token del header.
-// 2. Busca el Restaurant con ese access_token.
-// 3. Si no existe o el restaurante está inactivo → 401.
-// 4. Inyecta el Restaurant en la request: $request->restaurant.
-// 5. Valida que el restaurante esté activo (is_active = true).
+// 1. Extrae el slug de la ruta.
+// 2. Busca el Restaurant con ese slug.
+// 3. Si no existe → 404 { code: "tenant_not_found" }.
+// 4. Si no puede recibir pedidos (canReceiveOrders()==false) → 410 { code: "tenant_unavailable" }.
+// 5. Inyecta el Restaurant en los attributes del request: $request->attributes->get('restaurant').
 ```
+
+El SPA universal construye cada URL con el slug actual, obtenido del path `/r/:slug` del browser. Los rate-limits siguen aplicándose por IP + endpoint.
 
 ---
 
@@ -341,11 +343,11 @@ app/Http/Resources/
 | Módulo | Relación |
 |---|---|
 | **[08-customer-flow.md](./08-customer-flow.md)** | El SPA consume todos estos endpoints. |
-| **[09-delivery-service.md](./09-delivery-service.md)** | `POST /api/delivery/calculate` invoca el `DeliveryService`. |
-| **[07-superadmin.md](./07-superadmin.md)** | El `access_token` es generado al crear el restaurante desde el SuperAdmin. |
-| **[04-menu.md](./04-menu.md)** | `GET /api/menu` devuelve solo productos activos; `production_cost` nunca se incluye. |
-| **[05-branches.md](./05-branches.md)** | `GET /api/branches` y `POST /api/delivery/calculate` dependen de sucursales activas con coordenadas. |
-| **[06-settings.md](./06-settings.md)** | `GET /api/restaurant` devuelve métodos de entrega y pago activos. |
+| **[09-delivery-service.md](./09-delivery-service.md)** | `POST /api/public/{slug}/delivery/calculate` invoca el `DeliveryService`. |
+| **[07-superadmin.md](./07-superadmin.md)** | El `slug` del restaurante se define al crearlo; renombrar solo desde SuperAdmin. |
+| **[04-menu.md](./04-menu.md)** | `GET /api/public/{slug}/menu` devuelve solo productos activos; `production_cost` nunca se incluye. |
+| **[05-branches.md](./05-branches.md)** | `GET /api/public/{slug}/branches` y `POST /api/public/{slug}/delivery/calculate` dependen de sucursales activas con coordenadas. |
+| **[06-settings.md](./06-settings.md)** | `GET /api/public/{slug}/restaurant` devuelve métodos de entrega y pago activos. |
 
 ---
 

@@ -12,6 +12,7 @@ const navItems = [
     { name: 'Estadísticas', route: 'super.statistics', icon: 'bar_chart' },
     { name: 'Planes', route: 'super.plans.index', icon: 'payments' },
     { name: 'Billing', route: 'super.billing-settings', icon: 'tune' },
+    { name: 'Plataforma', route: 'super.platform-settings', icon: 'public' },
     { name: 'Mi cuenta', route: 'super.profile', icon: 'person' },
 ]
 

@@ -259,7 +259,6 @@ class PromotionTest extends TestCase
         Carbon::setTestNow(Carbon::create(2026, 3, 17, 14, 0, 0)); // Tuesday
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-token',
             'is_active' => true,
         ]);
 
@@ -273,7 +272,7 @@ class PromotionTest extends TestCase
             'ends_at' => '18:00',
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
         $response->assertOk();
 
         $data = $response->json('data');
@@ -290,7 +289,6 @@ class PromotionTest extends TestCase
         Carbon::setTestNow(Carbon::create(2026, 3, 18, 14, 0, 0)); // Wednesday
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-token',
             'is_active' => true,
         ]);
 
@@ -302,7 +300,7 @@ class PromotionTest extends TestCase
             'ends_at' => '18:00',
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
         $response->assertOk();
 
         $data = $response->json('data');
@@ -314,11 +312,10 @@ class PromotionTest extends TestCase
     public function test_api_menu_without_promotions_works_normally(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-token',
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
         $response->assertOk();
     }
 }

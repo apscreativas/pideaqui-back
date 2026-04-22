@@ -7,6 +7,73 @@
 
 ## Abril 2026
 
+### 2026-04-22
+
+- **Rate limits de API pública recalibrados + 429 en español** — `routes/api.php`:
+  - Grupo `public/{slug}/*` (GET): **60 → 120 req/min** (la SPA hace 3-4 fetches en boot + re-fetch en `visibilitychange`; 60 se quedaba corto con reloads).
+  - `POST /delivery/calculate`: **10 → 30 req/min** (el pin del mapa se mueve varias veces en checkout).
+  - `POST /coupons/validate`: **10 → 20 req/min** (permite probar varios códigos sin banear).
+  - `POST /orders`: **30 req/min** (sin cambio, escritura anti-spam).
+  - Nuevo handler en `bootstrap/app.php` para `ThrottleRequestsException` — retorna JSON `{code:'too_many_requests', message:'Demasiadas solicitudes...', retry_after:N}` en lugar del string inglés `Too Many Attempts.` de Laravel. Aplica cuando `$request->is('api/*')` o `expectsJson()`.
+  - Cliente: `PaymentConfirmation.vue` ahora lee `err.response?.data?.message` en el catch del cupón (ya lo hacía en order submit y DeliveryLocation).
+- **Self-signup público de restaurantes** — nueva ruta `/register` (guest + `throttle:3,1`). Flujo: valida con `RegisterRestaurantRequest` (restaurant_name, admin_name, email lowercase, password `min:8`+letters+mixedCase+numbers), delega a `RestaurantProvisioningService`, dispara `event(new Registered($admin))`, `Auth::login()`, redirige a `/email/verify`. 11 tests nuevos (`tests/Feature/Auth/RegisterTest.php`).
+- **`RestaurantProvisioningService` + DTO `ProvisionRestaurantData`** — orquestador único de provisioning. Envuelve en `DB::transaction`: Restaurant → User (`restaurant_id` directo, `role='admin'`) → 3 PaymentMethod stub → BillingAudit (`actor_type=source`). Reutilizado por SuperAdmin (`RestaurantController@store` pasa `source='super_admin'`) y `RegisterController` (`source='self_signup'`). Soporta `billing_mode='grace'|'manual'`. 13 tests unit (`tests/Unit/RestaurantProvisioningServiceTest.php`), incluyendo rollback cuando falla el audit.
+- **Email verification obligatoria solo para self_signup**:
+  - `User implements Illuminate\Contracts\Auth\MustVerifyEmail` (el trait ya estaba via `Illuminate\Foundation\Auth\User`).
+  - Migración `2026_04_22_100039_backfill_email_verified_at_on_users` marca todos los users existentes como verified (`email_verified_at = created_at`).
+  - Service setea `email_verified_at=now()` cuando `source='super_admin'` — admins creados por SuperAdmin entran sin fricción.
+  - `Auth\VerifyEmailController` (notice/verify/send) + `Pages/Auth/VerifyEmail.vue` + rutas `/email/verify*` bajo grupo `auth` (sin `verified` para que el user pueda verificar o logout).
+  - Grupo admin ahora requiere middleware `['auth','verified','tenant']`. Logout movido al grupo `auth` solo.
+  - `LoginController::store` redirige a `verification.notice` si `!user->hasVerifiedEmail()`.
+  - Botón "Enviar correo de verificación" en `SuperAdmin/Restaurants/Show.vue` — envía el correo voluntariamente sin desverificar al admin. Audit entry `verification_email_sent_manually`.
+  - 10 tests (`tests/Feature/Auth/EmailVerificationTest.php`).
+- **Correo de verificación en español con branding naranja** — `App\Notifications\VerifyEmailNotification` extiende `Illuminate\Auth\Notifications\VerifyEmail` y override `toMail()`. Subject `Verifica tu correo — PideAqui`, greeting `¡Bienvenido a PideAqui!`, action text `Verificar mi correo`. User::sendEmailVerificationNotification() override.
+- **Columna `restaurants.signup_source`** (migración `2026_04_22_095705`) — values `super_admin|self_signup`. Backfill a `super_admin` para históricos. Índice. RestaurantFactory gana estados `selfSignup()` y `grace()`.
+- **Columna `restaurants.access_token` eliminada** (migración `2026_04_22_122940_drop_access_token_from_restaurants_table`). Todas las referencias removidas de Restaurant model, RestaurantFactory y RestaurantProvisioningService. La SPA universal resuelve tenant exclusivamente por slug — ya no se necesita token por restaurante.
+- **SuperAdmin Dashboard — Tab "Alertas" accionables** (`DashboardController@index`):
+  - 4 KPIs nuevos en `alerts`: `grace_expiring_soon` (≤3 días), `orders_near_limit` (≥80%), `billing_manual` (activos), `new_this_week` (split self_signup/super_admin).
+  - Todos aplican filtro `is_active=true`.
+  - `orders_near_limit` usa el scope `Restaurant::withPeriodOrdersCount()` para batch query.
+  - Frontend: 8 cards click-through (4 accionables + 4 de estado general) — cada una navega a `Restaurants/Index?alert=...`.
+- **Filtros en SuperAdmin/Restaurants/Index** — `?alert=grace_expiring|orders_near_limit|billing_manual|new_this_week|past_due|grace_period|suspended|no_subscription`. Filtros combinables con `?status=0|1`. Banner arriba de la tabla cuando hay filtro activo con botón "Limpiar filtro". Pills de filtros rápidos para los 4 accionables. Badges inline por row: `Gracia Nd`, `80%+`, `Manual`.
+- **Fix N+1 en SuperAdmin/Restaurants/Index** — `period_orders_count` ahora usa el scope `Restaurant::withPeriodOrdersCount()` con subquery correlacionado (`SELECT COUNT(*) FROM orders WHERE restaurant_id = restaurants.id AND created_at BETWEEN orders_limit_start AND orders_limit_end`). Antes: 1+N queries por página, ahora: 2 queries.
+- **Redesign SuperAdmin/Restaurants/Show.vue** — hero con pills inline (status + slug + modo + plan + origen + fecha + id) + KPI row horizontal (Pedidos, Sucursales, Gracia con urgencia visual, Stripe) + grid que ahora vive sin el card de Access Token (removido): main 3/5 (Admin, Plan y límites) + side 2/5 (QR grande, URL pública, rename slug inline con SlugInput + checkbox de confirmación). Mejor densidad horizontal.
+- **Desmantelamiento completo de API pública legacy** — API ahora es exclusivamente `/api/public/{slug}/*`:
+  - Middleware `AuthenticateRestaurantToken` eliminado. Alias `auth.restaurant` eliminado de `bootstrap/app.php`.
+  - Grupo de rutas legacy `/api/restaurant`, `/api/menu`, `/api/branches`, `/api/orders`, `/api/delivery/calculate`, `/api/coupons/validate` eliminadas.
+  - `SuperAdmin\RestaurantController@regenerateToken` + ruta `POST /super/restaurants/{id}/regenerate-token` eliminados.
+  - Card "Access Token (API)" + modal de regeneración + refs (`showToken`, `showRegenerateModal`, `regenerating`) + funciones (`copyToken`, `regenerateToken`) removidos de `SuperAdmin/Restaurants/Show.vue`.
+  - `RestaurantProvisioningService::generateAccessToken()` eliminado. Factory, seeder, controllers y tests purgados.
+  - `tests/Feature/ApiTest.php` reescrito para usar `/api/public/{slug}/*`. Tests obsoletos de token auth (`test_requests_without_token_return_401`, etc.) reemplazados por `test_unknown_slug_returns_404`. 13 archivos de test actualizados con perl/python scripts para cambiar `authHeaders($r)` → URL con slug.
+  - Cliente SPA: `VITE_RESTAURANT_TOKEN` removido de `.env`/`.env.example`. Feature flag `VITE_MULTI_TENANT_MODE` eliminado (modo universal es el único). Router forzado a `createWebHistory()`. `src/services/api.js` simplificado (sin ramas condicionales). Stores, cookies, storage y router sin código legacy.
+- **Sistema de slugs con UX consciente**:
+  - Tabla nueva `platform_settings` (key/value cacheado con `Cache::rememberForever`) y modelo `App\Models\PlatformSetting` con API `::get/set/forget`.
+  - `config/tenants.php` — regex del slug, min/max length, lista de 42 `reserved_slugs` (admin, super, api, webhook, stripe, r, b, cart, delivery, etc.) extensible sin deploy.
+  - `App\Rules\ValidSlug` — rule reutilizable. Formato + reserved + longitud. No valida unicidad (se combina con `Rule::unique`).
+  - `App\Services\SlugSuggester` — `sanitize`, `generateUnique`, `suggest`, `isTaken`, `isReserved`. Retry 1x con slug auto-generado en `RestaurantProvisioningService` si colisión (QueryException unique violation).
+  - Endpoint público `GET /api/slug-check?slug=x` (`SlugCheckController`, `throttle:120,1`) retorna `{available, reason?: 'taken'|'reserved'|'invalid_format', message, suggestions[]}`. Compartido por self-signup y SuperAdmin.
+  - SuperAdmin: nueva página `/super/platform-settings` (`PlatformSettingsController`) para editar `public_menu_base_url`. Rename de slug via `PATCH /super/restaurants/{id}/slug` con `UpdateRestaurantSlugRequest` (requiere checkbox `confirm`), audita `restaurant_slug_renamed` con `{old_slug, new_slug}`.
+  - UI: componentes reutilizables `SlugInput.vue` (debounce 500ms + caché + badge estado + sugerencias clickeables + badge `throttled` como soft-fail sin bloquear submit) y `QrCode.vue` (canvas 200×200 con `qrcode` npm, expone `download()`).
+  - Admin `Settings/General.vue`: card "Tu enlace público" con QR + URL + botones Copiar / Descargar PNG. Admin NO puede renombrar — solo SuperAdmin.
+  - Inertia comparte `menu_base_url` globalmente via `HandleInertiaRequests` para construir URLs consistentes.
+  - 25 tests nuevos: `SlugCheckTest` (9), `PlatformSettingTest` (6), `SlugProvisioningTest` (10).
+- **Rename policy oficial para slug**: admin panel NO puede renombrar (evita romper QR impresos accidentalmente). SuperAdmin puede con modal de advertencia explícita. Sin redirect del slug viejo (404 inmediato).
+- **Política `status=suspended` documentada**: `ARCHITECTURE.md §2.7` + `docs/modules/17-billing.md`. Restaurante suspendido NO opera (API 410, manual/POS bloqueados por `canOperate()`) pero SÍ puede preparar (editar catálogo, branding, horarios, cupones, promociones). Decisión intencional — reduce fricción de reactivación.
+- **Rate limits de API pública recalibrados + 429 en español** — `routes/api.php`:
+  - Grupo `public/{slug}/*` (GET): **60 → 120 req/min** (la SPA hace 3-4 fetches en boot + re-fetch en `visibilitychange`; 60 se quedaba corto con reloads).
+  - `POST /delivery/calculate`: **10 → 30 req/min**.
+  - `POST /coupons/validate`: **10 → 20 req/min**.
+  - `POST /orders`: **30 req/min** (sin cambio).
+  - `GET /api/slug-check`: **20 → 120 req/min** (UX del SlugInput tipea 1 check por keystroke debounce 500ms).
+  - Handler global en `bootstrap/app.php` para `ThrottleRequestsException` — JSON `{code:'too_many_requests', message, retry_after}` en español + header `Retry-After`.
+- **Universal SPA client hardening (R1-R4 + §2.1 + §2.2)** — auditorías identificaron riesgos de contaminación cross-tenant. Fixes aplicados en repo `client/`:
+  - **R2**: `AbortController` tenant-scoped en `src/services/api.js`. `abortTenantRequests(slug)` cancela todos los fetches en vuelo al cambiar de tenant. Signal inyectado en cada request automáticamente.
+  - **R3**: `router.beforeEach` async bloqueante (`src/router/index.js`) — aborta, hidrata cart/order, awaita `bootstrapTenant()`. Navegación no completa hasta que los stores están hidratados, eliminando el flash del tenant anterior. App.vue simplificado (quitado `watch(route.params.slug)`).
+  - **R1**: Slug guard en `bootstrapTenant()` (`src/stores/restaurant.js`) — `requestedSlug` capturado al inicio, comparación contra `currentSlug.value` antes de cada mutación de estado (try/catch/finally). Late responses del tenant anterior se descartan.
+  - **R4**: Guard en `watch()` de `cart.js` y `order.js` — solo persisten si `activeSlug === currentSlugFromLocation()`. Previene que writes debounced del tenant anterior contaminen la key del nuevo tenant.
+  - **§2.1**: `<RouterView :key="route.params.slug">` en `App.vue` — fuerza remount de vistas al cambiar slug. Resetea refs locales (`searchQuery`, `activeCategory`, `selectedProduct` en MenuHome) que Vue Router por default preserva al reusar la instancia del componente.
+  - **§2.2**: `PaymentConfirmation.vue` revalida automáticamente (`onMounted`) cualquier cupón persistido en el store contra `/api/public/{slug}/coupons/validate`. Si responde inválido (expirado, max_uses, o código de otro tenant por defensa en profundidad), limpia el cupón silenciosamente. Evita mostrar descuento fantasma.
+
 ### 2026-04-17
 
 - **Documentación reorganizada**: docs se migraron al repo `admin/` (anterior carpeta `docs/` raíz del workspace eliminada). `ARCHITECTURE.md`, `PRD.md`, `DATABASE.md` consolidados bajo `admin/docs/`.

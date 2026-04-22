@@ -49,9 +49,14 @@ Servicios externos: **Google Maps JS API** (frontend admin), **Google Distance M
 
 Los dos paneles administrativos comparten backend y emiten HTML server-driven con payload JSON vía Inertia. Esto evita duplicar validación, auth y policies en un API layer.
 
-### 2.2 Cliente final: Vue 3 SPA + REST API con token por restaurante
+### 2.2 Cliente final: Vue 3 SPA universal + REST API resuelta por slug
 
-El SPA del cliente (`pideaqui-front`) es un repo independiente. Cada restaurante despliega un build con su `VITE_RESTAURANT_TOKEN` en el `.env`. El backend resuelve el tenant desde el header `X-Restaurant-Token` (o `Authorization: Bearer`).
+El SPA del cliente (`pideaqui-front`) es un repo independiente, **un único bundle universal** desplegado para todos los restaurantes. El tenant se resuelve en runtime del URL `/r/{slug}`.
+
+- Backend: middleware `ResolveTenantFromSlug` sobre el grupo `/api/public/{slug}/*` inyecta el `Restaurant` en `$request->attributes['restaurant']`. 404 si el slug no existe, 410 si el restaurante no puede recibir pedidos (`canReceiveOrders() === false`).
+- Cliente: `axios` interceptor en `client/src/services/api.js` reescribe `/api/restaurant` → `/api/public/{slug}/restaurant` usando el slug actual de `window.location.pathname`.
+- Aislamiento client-side: `AbortController` por tenant cancela requests en vuelo al cambiar de slug; `router.beforeEach` async bloquea navegación hasta `bootstrapTenant()` completo; guards de slug en stores (cart, order, restaurant) evitan contaminación cross-tenant entre navegaciones rápidas.
+- El patrón legacy por `access_token` + header `X-Restaurant-Token` fue removido (columna dropeada 2026-04-22).
 
 ### 2.3 Landing: Nuxt 4 desacoplada (`landing-pideaqui`)
 
@@ -74,7 +79,9 @@ Una sola base de datos. Toda tabla del dominio tiene FK `restaurant_id`. El aisl
 | `web` | `User` | `users` | Admin de restaurante y operadores (rol `admin` u `operator`) |
 | `superadmin` | `SuperAdmin` | `super_admins` | Dueño de la plataforma SaaS |
 
-El login SuperAdmin vive en `/super/login`, aislado del admin. No hay registro público en ningún caso.
+El login SuperAdmin vive en `/super/login`, aislado del admin.
+
+**Registro público (desde Abr 2026):** existe la ruta `POST /register` (guard `guest` + `throttle:3,1`) que permite a dueños de restaurante auto-registrarse en plan de gracia (14 días, 50 pedidos, 1 sucursal). Requiere verificación de correo obligatoria antes de acceder al dashboard — aplicada solo a `signup_source='self_signup'`; admins creados por SuperAdmin entran pre-verificados. Ver módulo `docs/modules/01-auth.md`.
 
 ### 2.6 Roles dentro del tenant
 
@@ -93,6 +100,8 @@ Modos de cobro coexistentes:
 - **`subscription`**: plan + Stripe; límites y período vienen del plan + webhook Stripe.
 
 El gate `Restaurant::canOperate()` decide si el restaurante puede recibir/registrar pedidos manualmente y POS. **No** bloquea al alcanzar `orders_limit` (capacidad ≠ estado del servicio).
+
+**Política de `status=suspended` (post grace expiration):** decisión de diseño intencional — un restaurante suspendido **NO puede operar** (recibir pedidos del menú público, crear órdenes manuales desde admin, crear POS sales) pero **SÍ puede preparar su negocio**: editar el catálogo (productos, precios, categorías), branding (logo, colores), horarios, fechas especiales, cupones, promociones y gestionar su equipo. El objetivo es reducir la fricción de reactivación: cuando el dueño paga y vuelve a `status=active`, arranca con su catálogo al día en lugar de tener que reconstruir cambios. Los bloqueos efectivos al suspender viven en los servicios que sí gatean `canOperate()` / `canReceiveOrders()`: `OrderService::store`, `PosSaleService::store`, y el middleware `ResolveTenantFromSlug` que responde 410 en `/api/public/{slug}/*`. Los controllers de catálogo/branding/horarios intencionalmente **no** gatean canOperate. El paywall visible en el panel (prop `billing.must_show_billing` de `HandleInertiaRequests`) señala al usuario dónde está la acción pendiente sin restringirle las pantallas de preparación.
 
 ### 2.8 POS desacoplado del flujo de pedidos
 
@@ -183,8 +192,24 @@ Para detalle granular, ver [docs/modules/INDEX.md](./modules/INDEX.md). Resumen 
 | `CancellationService` | Agregaciones de cancelaciones combinando orders + pos_sales |
 | `StatisticsService` | KPIs del dashboard: revenue, costo, utilidad neta (cruza con expenses) |
 | `PosTicketNumberService` | Generación secuencial de números de ticket con prefijo por sucursal |
+| `Onboarding\RestaurantProvisioningService` | **Orquestador único del onboarding de restaurantes.** Crea Restaurant + User admin + 3 PaymentMethod stub (cash activo, terminal+transfer inactivos) + BillingAudit en una transacción. Reutilizado por `SuperAdmin\RestaurantController@store` (source `super_admin`) y `Auth\RegisterController@store` (source `self_signup`). Pre-verifica email cuando `source='super_admin'`. Acepta DTO `Onboarding\Dto\ProvisionRestaurantData` con `billingMode` (grace \| manual), `signup_source`, límites opcionales, slug opcional (valida disponibilidad via `SlugSuggester`). Maneja colisiones de slug con retry sobre `QueryException` de unique violation. |
 
 Ningún servicio depende de `Request` o `Auth` directamente. Reciben los modelos como argumentos (testeable).
+
+### 4.1 Scope `Restaurant::withPeriodOrdersCount()`
+
+Para listados del SuperAdmin que necesitan contar pedidos del período por restaurante sin N+1, el modelo `Restaurant` expone el scope `withPeriodOrdersCount()` que agrega la columna virtual `period_orders_count` via subquery correlacionado:
+
+```sql
+SELECT restaurants.*, (
+  SELECT COUNT(*) FROM orders
+  WHERE orders.restaurant_id = restaurants.id
+    AND orders.created_at BETWEEN restaurants.orders_limit_start AND restaurants.orders_limit_end
+) AS period_orders_count
+FROM restaurants
+```
+
+Usado en `SuperAdmin\RestaurantController@index` y en la métrica `alerts.orders_near_limit` del dashboard. Reemplaza el patrón previo de iterar en PHP con `LimitService::orderCountInPeriod()` por restaurante.
 
 ---
 
@@ -194,7 +219,7 @@ Ningún servicio depende de `Request` o `Auth` directamente. Reciben los modelos
 |---|---|---|
 | `EnsureTenantContext` | `tenant` | Rutas admin autenticadas (exige `restaurant_id` en user) |
 | `EnsureRole` | `role:admin` / `role:operator` | Rutas restringidas por rol dentro del tenant |
-| `AuthenticateRestaurantToken` | `auth.restaurant` | Rutas `/api/*`, valida token + `canReceiveOrders()` |
+| `ResolveTenantFromSlug` | `tenant.slug` | Rutas `/api/public/{slug}/*`, resuelve tenant por URL (404 si no existe, 410 si no puede operar) |
 | `HandleInertiaRequests` | default | Props compartidos: auth user, billing state, flash messages |
 
 Registrados en `bootstrap/app.php` (no `Http/Kernel.php` — Laravel 12).

@@ -95,6 +95,46 @@ class DashboardController extends Controller
                     ->whereNull('stripe_id')
                     ->where('status', '!=', 'disabled')
                     ->count(),
+
+                // Paquete A — Alertas accionables
+                'grace_expiring_soon' => Restaurant::query()
+                    ->where('is_active', true)
+                    ->where('status', 'grace_period')
+                    ->whereBetween('grace_period_ends_at', [$now, $now->copy()->addDays(3)])
+                    ->count(),
+
+                'orders_near_limit' => Restaurant::query()
+                    ->withPeriodOrdersCount()
+                    ->where('is_active', true)
+                    ->where('orders_limit', '>', 0)
+                    ->whereNotNull('orders_limit_start')
+                    ->whereNotNull('orders_limit_end')
+                    ->get()
+                    ->filter(fn ($r) => $r->orders_limit > 0
+                        && ($r->period_orders_count / $r->orders_limit) >= 0.8)
+                    ->count(),
+
+                'billing_manual' => Restaurant::query()
+                    ->where('is_active', true)
+                    ->where('billing_mode', 'manual')
+                    ->count(),
+
+                'new_this_week' => [
+                    'total' => Restaurant::query()
+                        ->where('is_active', true)
+                        ->where('created_at', '>=', $now->copy()->subDays(7))
+                        ->count(),
+                    'self_signup' => Restaurant::query()
+                        ->where('is_active', true)
+                        ->where('signup_source', 'self_signup')
+                        ->where('created_at', '>=', $now->copy()->subDays(7))
+                        ->count(),
+                    'super_admin' => Restaurant::query()
+                        ->where('is_active', true)
+                        ->where('signup_source', 'super_admin')
+                        ->where('created_at', '>=', $now->copy()->subDays(7))
+                        ->count(),
+                ],
             ],
 
             // Recent events

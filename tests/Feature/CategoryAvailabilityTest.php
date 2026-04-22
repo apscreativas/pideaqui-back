@@ -123,7 +123,6 @@ class CategoryAvailabilityTest extends TestCase
         Carbon::setTestNow(Carbon::create(2026, 3, 17, 15, 0, 0)); // Tuesday 15:00
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-token',
             'is_active' => true,
         ]);
 
@@ -153,7 +152,7 @@ class CategoryAvailabilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
         $response->assertOk();
 
         $data = $response->json('data');
@@ -168,7 +167,6 @@ class CategoryAvailabilityTest extends TestCase
         Carbon::setTestNow(Carbon::create(2026, 3, 17, 10, 0, 0)); // Tuesday 10:00
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'test-token',
             'is_active' => true,
         ]);
 
@@ -185,7 +183,7 @@ class CategoryAvailabilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
         $response->assertOk();
 
         $categoryIds = collect($response->json('data'))->pluck('id')->filter()->toArray();

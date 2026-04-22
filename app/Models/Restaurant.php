@@ -21,7 +21,6 @@ class Restaurant extends Model
         'name',
         'slug',
         'logo_path',
-        'access_token',
         'is_active',
         'allows_delivery',
         'allows_pickup',
@@ -43,10 +42,7 @@ class Restaurant extends Model
         'pending_plan_effective_at',
         'billing_mode',
         'pending_billing_cycle',
-    ];
-
-    protected $hidden = [
-        'access_token',
+        'signup_source',
     ];
 
     protected function casts(): array
@@ -87,6 +83,21 @@ class Restaurant extends Model
         );
     }
 
+    /**
+     * Canonical public URL of this restaurant's menu.
+     *
+     * Built from the platform-wide `public_menu_base_url` setting (edited
+     * by SuperAdmin), falling back to `APP_URL`. Always returns an absolute
+     * URL in the form `{base}/r/{slug}` with no trailing slash.
+     */
+    public function menuPublicUrl(): string
+    {
+        $base = PlatformSetting::get('public_menu_base_url') ?: config('app.url', '');
+        $base = rtrim((string) $base, '/');
+
+        return $base.'/r/'.$this->slug;
+    }
+
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
@@ -100,6 +111,21 @@ class Restaurant extends Model
     public function hasPendingDowngrade(): bool
     {
         return $this->pending_plan_id !== null;
+    }
+
+    /**
+     * Scope: add a `period_orders_count` attribute to each row with the
+     * number of orders within the restaurant's `orders_limit_start/end`
+     * window. Single correlated subquery — avoids N+1 from
+     * `LimitService::orderCountInPeriod()` when listing many restaurants.
+     */
+    public function scopeWithPeriodOrdersCount($query)
+    {
+        return $query->selectRaw('restaurants.*, (
+            SELECT COUNT(*) FROM orders
+            WHERE orders.restaurant_id = restaurants.id
+              AND orders.created_at BETWEEN restaurants.orders_limit_start AND restaurants.orders_limit_end
+        ) AS period_orders_count');
     }
 
     public function clearPendingDowngrade(): void

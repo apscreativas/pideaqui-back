@@ -20,12 +20,18 @@ const flash = computed(() => page.props.flash)
 const billing = computed(() => page.props.billing)
 
 const billingGraceDaysLeft = computed(() => {
+    // Prefer server-computed value; fall back to client calc for resilience.
+    if (billing.value?.grace_days_remaining !== undefined && billing.value?.grace_days_remaining !== null) {
+        return billing.value.grace_days_remaining
+    }
     if (!billing.value?.grace_period_ends_at) return 0
     const now = new Date()
     const end = new Date(billing.value.grace_period_ends_at)
     const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24))
     return Math.max(0, diff)
 })
+
+const graceIsUrgent = computed(() => billingGraceDaysLeft.value !== null && billingGraceDaysLeft.value <= 3)
 
 function formatBillingDate(dateStr) {
     if (!dateStr) return ''
@@ -157,11 +163,26 @@ function logout() {
 
             <!-- Billing banners -->
             <div v-if="billing?.status === 'grace_period'" class="px-8 pt-4">
-                <div class="flex items-center gap-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl px-4 py-3 text-sm">
-                    <span class="material-symbols-outlined text-orange-500 text-xl" style="font-variation-settings:'FILL' 1">warning</span>
+                <div
+                    class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm border"
+                    :class="graceIsUrgent
+                        ? 'bg-red-50 border-red-200 text-red-800'
+                        : 'bg-orange-50 border-orange-200 text-orange-800'"
+                >
+                    <span
+                        class="material-symbols-outlined text-xl"
+                        :class="graceIsUrgent ? 'text-red-500' : 'text-orange-500'"
+                        style="font-variation-settings:'FILL' 1"
+                    >warning</span>
                     <span>
-                        Tu periodo de gracia vence en <strong>{{ billingGraceDaysLeft }} dias</strong>.
-                        <Link :href="route('settings.subscription')" class="font-semibold underline hover:text-orange-900">Elige un plan</Link>
+                        <template v-if="billingGraceDaysLeft === 0">Tu periodo de gracia vence <strong>hoy</strong>.</template>
+                        <template v-else-if="billingGraceDaysLeft === 1">Tu periodo de gracia vence <strong>mañana</strong>.</template>
+                        <template v-else>Tu periodo de gracia vence en <strong>{{ billingGraceDaysLeft }} dias</strong>.</template>
+                        <Link
+                            :href="route('settings.subscription')"
+                            class="font-semibold underline"
+                            :class="graceIsUrgent ? 'hover:text-red-900' : 'hover:text-orange-900'"
+                        >Elige un plan</Link>
                         para continuar operando.
                     </span>
                 </div>

@@ -36,7 +36,6 @@ class OrderNotificationTest extends TestCase
     private function restaurant(array $attrs = []): Restaurant
     {
         $restaurant = Restaurant::factory()->create(array_merge([
-            'access_token' => 'test-notif-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_delivery' => true,
@@ -82,11 +81,6 @@ class OrderNotificationTest extends TestCase
         ];
     }
 
-    private function authHeaders(Restaurant $restaurant): array
-    {
-        return ['Authorization' => 'Bearer '.$restaurant->access_token];
-    }
-
     // ─── Tests ────────────────────────────────────────────────────────────────
 
     public function test_notification_sent_on_new_order(): void
@@ -98,7 +92,10 @@ class OrderNotificationTest extends TestCase
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
         $product = Product::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
 
-        $this->postJson('/api/orders', $this->orderPayload($branch, $product), $this->authHeaders($restaurant))
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->orderPayload($branch, $product),
+        )
             ->assertCreated();
 
         Notification::assertSentTo($restaurant, NewOrderNotification::class);
@@ -113,7 +110,10 @@ class OrderNotificationTest extends TestCase
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
         $product = Product::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
 
-        $this->postJson('/api/orders', $this->orderPayload($branch, $product), $this->authHeaders($restaurant))
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->orderPayload($branch, $product),
+        )
             ->assertCreated();
 
         Notification::assertNotSentTo($restaurant, NewOrderNotification::class);
@@ -128,7 +128,10 @@ class OrderNotificationTest extends TestCase
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true, 'name' => 'Sucursal Centro']);
         $product = Product::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true, 'name' => 'Enchiladas', 'price' => 85.00]);
 
-        $this->postJson('/api/orders', $this->orderPayload($branch, $product), $this->authHeaders($restaurant))
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->orderPayload($branch, $product),
+        )
             ->assertCreated();
 
         Notification::assertSentTo($restaurant, NewOrderNotification::class, function (NewOrderNotification $notification) {
@@ -161,7 +164,10 @@ class OrderNotificationTest extends TestCase
         $branch = Branch::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
         $product = Product::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
 
-        $response = $this->postJson('/api/orders', $this->orderPayload($branch, $product), $this->authHeaders($restaurant));
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->orderPayload($branch, $product),
+        );
 
         $response->assertCreated();
         $this->assertDatabaseCount('orders', 1);

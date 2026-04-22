@@ -34,16 +34,24 @@ client/
 │   │   └── restaurant.js ← Datos del restaurante (desde API)
 │   ├── views/           ← Vistas principales (una por pantalla)
 │   └── components/      ← Componentes reutilizables
-├── .env                 ← VITE_API_BASE_URL, VITE_RESTAURANT_TOKEN
+├── .env                 ← VITE_API_BASE_URL, VITE_GOOGLE_MAPS_KEY
 └── vite.config.js
 ```
 
-**Variables de entorno por instancia:**
+**Variables de entorno (universales, 2 solamente):**
 - `VITE_API_BASE_URL` — URL del backend.
-- `VITE_RESTAURANT_TOKEN` — `access_token` único del restaurante (configurado por SuperAdmin).
 - `VITE_GOOGLE_MAPS_KEY` — API key de Google Maps (para el mapa de ubicación).
 
-Cada restaurante tiene su propia instancia con su propio `VITE_RESTAURANT_TOKEN`.
+**Arquitectura universal (Abr 2026):** Un único build del SPA sirve a TODOS los restaurantes. El tenant se resuelve en runtime del path `/r/:slug` (vía `currentSlugFromLocation()` en `src/config/tenant.js`). El interceptor de `axios` reescribe cualquier `api.get('/api/foo')` → `GET /api/public/{slug}/foo`. No hay `VITE_RESTAURANT_TOKEN` ni header `X-Restaurant-Token` — el slug en la URL es el identificador público.
+
+**Hardening cross-tenant (Abr 2026):**
+- `AbortController` tenant-scoped en `src/services/api.js`: cancela requests en vuelo al cambiar slug.
+- `router.beforeEach` async bloqueante: aborta tenant anterior, hidrata stores (cart, order) y awaita `bootstrapTenant()` ANTES de montar la vista destino.
+- Slug guard en `bootstrapTenant`: si la respuesta llega después de cambiar de tenant, se descarta sin mutar state.
+- `<RouterView :key="route.params.slug">` en `App.vue`: fuerza remount de vistas al cambiar slug → resetea refs locales (searchQuery, activeCategory).
+- localStorage namespaceado: `pideaqui:{slug}:cart`, `pideaqui:{slug}:order`.
+- Cookie del cliente por tenant: `pideaqui__{slug}__customer`.
+- Re-validación automática de cupón al entrar a Payment (defensa contra cupones fantasma).
 
 ---
 

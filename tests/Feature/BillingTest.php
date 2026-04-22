@@ -333,46 +333,37 @@ class BillingTest extends TestCase
 
     public function test_api_rejects_suspended_restaurant(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'suspended-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => true,
             'status' => 'suspended',
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'suspended-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
-        $response->assertStatus(401);
+        $response->assertStatus(410);
     }
 
     public function test_api_allows_active_restaurant(): void
     {
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'active-token',
             'is_active' => true,
             'status' => 'active',
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'active-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertStatus(200);
     }
 
     public function test_api_allows_grace_period_restaurant(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'grace-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => true,
             'status' => 'grace_period',
             'grace_period_ends_at' => now()->addDays(7),
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'grace-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertStatus(200);
     }
@@ -381,78 +372,63 @@ class BillingTest extends TestCase
 
     public function test_api_rejects_past_due_restaurant(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'pastdue-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => true,
             'status' => 'past_due',
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'pastdue-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
-        $response->assertStatus(401);
+        $response->assertStatus(410);
     }
 
     public function test_api_rejects_incomplete_restaurant(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'incomplete-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => false,
             'status' => 'incomplete',
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'incomplete-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
-        $response->assertStatus(401);
+        $response->assertStatus(410);
     }
 
     public function test_api_allows_canceled_restaurant_within_period(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'canceled-active-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => true,
             'status' => 'canceled',
             'subscription_ends_at' => now()->addDays(10),
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'canceled-active-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
         $response->assertStatus(200);
     }
 
     public function test_api_rejects_canceled_restaurant_past_period(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'canceled-expired-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => true,
             'status' => 'canceled',
             'subscription_ends_at' => now()->subDay(),
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'canceled-expired-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
-        $response->assertStatus(401);
+        $response->assertStatus(410);
     }
 
     public function test_api_rejects_disabled_restaurant(): void
     {
-        Restaurant::factory()->create([
-            'access_token' => 'disabled-token',
+        $restaurant = Restaurant::factory()->create([
             'is_active' => false,
             'status' => 'disabled',
         ]);
 
-        $response = $this->getJson('/api/restaurant', [
-            'X-Restaurant-Token' => 'disabled-token',
-        ]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/restaurant");
 
-        $response->assertStatus(401);
+        $response->assertStatus(410);
     }
 }

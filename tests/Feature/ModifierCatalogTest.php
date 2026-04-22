@@ -195,7 +195,7 @@ class ModifierCatalogTest extends TestCase
 
     public function test_api_menu_merges_both_modifier_sources(): void
     {
-        $restaurant = Restaurant::factory()->create(['access_token' => 'merge-test-token', 'is_active' => true]);
+        $restaurant = Restaurant::factory()->create(['is_active' => true]);
         $category = Category::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
         $product = Product::factory()->create([
             'restaurant_id' => $restaurant->id,
@@ -221,7 +221,7 @@ class ModifierCatalogTest extends TestCase
         ModifierOptionTemplate::factory()->create(['modifier_group_template_id' => $template->id, 'name' => 'Catalog Opt', 'is_active' => true]);
         $product->modifierGroupTemplates()->attach($template->id, ['sort_order' => 0]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
 
         $response->assertOk();
         $menuData = $response->json('data');
@@ -236,7 +236,7 @@ class ModifierCatalogTest extends TestCase
 
     public function test_api_menu_excludes_inactive_template_groups(): void
     {
-        $restaurant = Restaurant::factory()->create(['access_token' => 'inactive-test', 'is_active' => true]);
+        $restaurant = Restaurant::factory()->create(['is_active' => true]);
         $category = Category::factory()->create(['restaurant_id' => $restaurant->id, 'is_active' => true]);
         $product = Product::factory()->create([
             'restaurant_id' => $restaurant->id,
@@ -251,7 +251,7 @@ class ModifierCatalogTest extends TestCase
         ModifierOptionTemplate::factory()->create(['modifier_group_template_id' => $template->id]);
         $product->modifierGroupTemplates()->attach($template->id, ['sort_order' => 0]);
 
-        $response = $this->getJson('/api/menu', ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        $response = $this->getJson("/api/public/{$restaurant->slug}/menu");
 
         $response->assertOk();
         $productData = $response->json('data.0.products.0');
@@ -265,7 +265,6 @@ class ModifierCatalogTest extends TestCase
         $this->mockGoogleMaps();
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'catalog-order-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_pickup' => true,
@@ -324,7 +323,7 @@ class ModifierCatalogTest extends TestCase
     {
         [$restaurant, $branch, $product, $template, $option] = $this->setupOrderTest();
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-token-1', 'name' => 'Juan', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -337,7 +336,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $option->id, 'price_adjustment' => 10.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertCreated();
 
@@ -354,7 +353,7 @@ class ModifierCatalogTest extends TestCase
     {
         [$restaurant, $branch, $product, $template, $option] = $this->setupOrderTest();
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-token-2', 'name' => 'Ana', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -367,7 +366,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $option->id, 'price_adjustment' => 0.01],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
     }
@@ -387,7 +386,7 @@ class ModifierCatalogTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-token-3', 'name' => 'Luis', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -400,7 +399,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $unlinkedOption->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
     }
@@ -421,7 +420,7 @@ class ModifierCatalogTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-token-4', 'name' => 'Pedro', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -435,7 +434,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $catalogOption->id, 'price_adjustment' => 10.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertCreated();
 
@@ -455,7 +454,7 @@ class ModifierCatalogTest extends TestCase
             'is_active' => false,
         ]);
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-token-5', 'name' => 'Rosa', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -468,7 +467,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_template_id' => $inactiveOption->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
     }
@@ -478,7 +477,6 @@ class ModifierCatalogTest extends TestCase
         $this->mockGoogleMaps();
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'req-catalog-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_pickup' => true,
@@ -505,7 +503,7 @@ class ModifierCatalogTest extends TestCase
         $product->modifierGroupTemplates()->attach($template->id, ['sort_order' => 0]);
 
         // Order without selecting from required catalog group.
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'test-req', 'name' => 'Carlos', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -516,7 +514,7 @@ class ModifierCatalogTest extends TestCase
                 'unit_price' => 30.00,
                 'modifiers' => [],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertUnprocessable();
     }
@@ -528,7 +526,6 @@ class ModifierCatalogTest extends TestCase
         $this->mockGoogleMaps();
 
         $restaurant = Restaurant::factory()->create([
-            'access_token' => 'compat-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_pickup' => true,
@@ -557,7 +554,7 @@ class ModifierCatalogTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/orders', [
+        $response = $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'compat-cust', 'name' => 'Mario', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -570,7 +567,7 @@ class ModifierCatalogTest extends TestCase
                     ['modifier_option_id' => $option->id, 'price_adjustment' => 15.00],
                 ],
             ]],
-        ], ['Authorization' => 'Bearer '.$restaurant->access_token]);
+        ]);
 
         $response->assertCreated();
         $this->assertDatabaseHas('order_item_modifiers', [

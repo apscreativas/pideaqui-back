@@ -42,7 +42,6 @@ class OrderApiTest extends TestCase
     private function restaurant(array $attrs = []): Restaurant
     {
         $restaurant = Restaurant::factory()->create(array_merge([
-            'access_token' => 'test-order-token',
             'is_active' => true,
             'orders_limit' => 100,
             'allows_delivery' => true,
@@ -65,11 +64,6 @@ class OrderApiTest extends TestCase
         ]);
 
         return $restaurant;
-    }
-
-    private function authHeaders(Restaurant $restaurant): array
-    {
-        return ['Authorization' => 'Bearer '.$restaurant->access_token];
     }
 
     private function branch(Restaurant $restaurant): Branch
@@ -124,11 +118,13 @@ class OrderApiTest extends TestCase
         ], $overrides);
     }
 
-    // ─── Auth ─────────────────────────────────────────────────────────────────
+    // ─── Tenant resolution ────────────────────────────────────────────────────
 
-    public function test_unauthenticated_request_returns_401(): void
+    public function test_unknown_slug_returns_404(): void
     {
-        $this->postJson('/api/orders', [])->assertUnauthorized();
+        $this->postJson('/api/public/ghost-slug/orders', [])
+            ->assertNotFound()
+            ->assertJsonPath('code', 'tenant_not_found');
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────
@@ -137,7 +133,9 @@ class OrderApiTest extends TestCase
     {
         $restaurant = $this->restaurant();
 
-        $this->postJson('/api/orders', [], $this->authHeaders($restaurant))
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            [])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['customer', 'delivery_type', 'branch_id', 'payment_method', 'items']);
     }
@@ -148,13 +146,13 @@ class OrderApiTest extends TestCase
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant);
 
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'abc', 'name' => 'Test', 'phone' => '1234567890'],
             'delivery_type' => 'delivery',
             'branch_id' => $branch->id,
             'payment_method' => 'cash',
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['address_street', 'address_number', 'address_colony', 'latitude', 'longitude', 'distance_km', 'delivery_cost']);
     }
@@ -169,9 +167,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         );
 
         $response->assertCreated()
@@ -187,9 +184,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertDatabaseHas('orders', [
@@ -209,9 +205,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $order = Order::latest()->first();
@@ -245,7 +240,7 @@ class OrderApiTest extends TestCase
             ]],
         ]);
 
-        $this->postJson('/api/orders', $payload, $this->authHeaders($restaurant))
+        $this->postJson("/api/public/{$restaurant->slug}/orders", $payload)
             ->assertCreated();
 
         // subtotal = (25 + 15) × 1 = 40; delivery = 30; total = 70
@@ -260,13 +255,13 @@ class OrderApiTest extends TestCase
         $branch = $this->branch($restaurant);
         $product = $this->product($restaurant, 25.00);
 
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-test-002', 'name' => 'Juan', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
             'payment_method' => 'cash',
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
-        ], $this->authHeaders($restaurant))->assertCreated();
+        ])->assertCreated();
 
         $order = Order::latest()->first();
         $this->assertEquals('0.00', $order->delivery_cost);
@@ -280,11 +275,11 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
         $this->withDeliveryRange($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, [
                 'customer' => ['token' => 'unique-token-abc', 'name' => 'Ana López', 'phone' => '5512345678'],
             ]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertDatabaseHas('customers', ['token' => 'unique-token-abc', 'name' => 'Ana López']);
@@ -299,9 +294,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
@@ -321,9 +315,9 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
         $this->withDeliveryRange($restaurant);
 
-        $response = $this->postJson('/api/orders',
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertMatchesRegularExpression('/^#\d{4,}$/', $response->json('data.order_number'));
@@ -347,9 +341,9 @@ class OrderApiTest extends TestCase
             'status' => 'received',
         ]);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonPath('error', 'monthly_limit_reached');
     }
@@ -365,9 +359,9 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
         $this->withDeliveryRange($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonPath('error', 'monthly_limit_reached');
     }
@@ -383,9 +377,9 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
         $this->withDeliveryRange($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonPath('error', 'monthly_limit_reached');
     }
@@ -397,9 +391,9 @@ class OrderApiTest extends TestCase
         $foreignBranch = $this->branch($otherRestaurant);
         $product = $this->product($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($foreignBranch, $product, ['delivery_type' => 'pickup']),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['branch_id']);
     }
@@ -414,9 +408,9 @@ class OrderApiTest extends TestCase
         ]);
         $product = $this->product($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['delivery_type' => 'pickup']),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['branch_id']);
     }
@@ -432,9 +426,9 @@ class OrderApiTest extends TestCase
         ]);
         $this->withDeliveryRange($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -449,12 +443,12 @@ class OrderApiTest extends TestCase
         // Range only covers 0-2 km, but driving distance is 3.5 km.
         $this->withDeliveryRange($restaurant, 0, 2, 30.00);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, [
                 'latitude' => 19.460000,
                 'longitude' => -99.110000,
             ]),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['delivery_cost']);
     }
@@ -467,9 +461,9 @@ class OrderApiTest extends TestCase
         // Range price is $50, but client sends $30
         $this->withDeliveryRange($restaurant, 0, 10, 50.00);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['delivery_cost' => 30.00]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $order = Order::latest()->first();
@@ -494,13 +488,13 @@ class OrderApiTest extends TestCase
         ]);
 
         // Send order with no modifiers — should fail because group is required.
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-test-req', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
             'payment_method' => 'cash',
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -516,7 +510,7 @@ class OrderApiTest extends TestCase
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 1.00, 'modifiers' => []]],
         ]);
 
-        $this->postJson('/api/orders', $payload, $this->authHeaders($restaurant))
+        $this->postJson("/api/public/{$restaurant->slug}/orders", $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -546,7 +540,7 @@ class OrderApiTest extends TestCase
             ]],
         ]);
 
-        $this->postJson('/api/orders', $payload, $this->authHeaders($restaurant))
+        $this->postJson("/api/public/{$restaurant->slug}/orders", $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -578,7 +572,7 @@ class OrderApiTest extends TestCase
             ]],
         ]);
 
-        $this->postJson('/api/orders', $payload, $this->authHeaders($restaurant))
+        $this->postJson("/api/public/{$restaurant->slug}/orders", $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -592,9 +586,9 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
         $this->withDeliveryRange($restaurant);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['delivery_type']);
     }
@@ -606,13 +600,13 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant);
 
         // default restaurant() creates cash as active, use terminal which doesn't exist
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-pm', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
             'payment_method' => 'terminal',
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => $product->price, 'modifiers' => []]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['payment_method']);
     }
@@ -636,7 +630,7 @@ class OrderApiTest extends TestCase
         ]);
 
         // Send the same option twice in one item — should be rejected.
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-dup', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -650,7 +644,7 @@ class OrderApiTest extends TestCase
                     ['modifier_option_id' => $option->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable();
     }
 
@@ -669,9 +663,9 @@ class OrderApiTest extends TestCase
             ->where('day_of_week', now()->dayOfWeek)
             ->update(['is_closed' => true, 'opens_at' => null, 'closes_at' => null]);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['scheduled_at']);
     }
@@ -693,11 +687,11 @@ class OrderApiTest extends TestCase
 
         $scheduledAt = now()->addWeek()->setTime(3, 0);
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, [
                 'scheduled_at' => $scheduledAt->toIso8601String(),
             ]),
-            $this->authHeaders($restaurant),
         )->assertUnprocessable()
             ->assertJsonValidationErrors(['scheduled_at']);
     }
@@ -719,11 +713,11 @@ class OrderApiTest extends TestCase
             ['opens_at' => '00:00', 'closes_at' => '23:59', 'is_closed' => false],
         );
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, [
                 'scheduled_at' => $tomorrow->toIso8601String(),
             ]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
     }
 
@@ -755,11 +749,11 @@ class OrderApiTest extends TestCase
             );
         }
 
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, [
                 'scheduled_at' => $utcString,
             ]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
     }
 
@@ -771,9 +765,9 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         // Client sends fake distance_km: 0.1, but Google Maps mock returns 1.5 km.
-        $this->postJson('/api/orders',
+        $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['distance_km' => 0.1]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $order = Order::latest()->first();
@@ -804,7 +798,7 @@ class OrderApiTest extends TestCase
         ]);
 
         // Send two options for a single-selection group — should be rejected.
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-single', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -818,7 +812,7 @@ class OrderApiTest extends TestCase
                     ['modifier_option_id' => $optionB->id, 'price_adjustment' => 3.00],
                 ],
             ]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -844,7 +838,7 @@ class OrderApiTest extends TestCase
         ]);
 
         // Two options for a multiple-selection group — should succeed.
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-multi', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -858,7 +852,7 @@ class OrderApiTest extends TestCase
                     ['modifier_option_id' => $optionB->id, 'price_adjustment' => 3.00],
                 ],
             ]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertCreated();
     }
 
@@ -880,7 +874,7 @@ class OrderApiTest extends TestCase
         ]);
 
         // Send product A's modifier on product B — should be rejected.
-        $this->postJson('/api/orders', [
+        $this->postJson("/api/public/{$restaurant->slug}/orders", [
             'customer' => ['token' => 'uuid-cross', 'name' => 'Test', 'phone' => '5512345678'],
             'delivery_type' => 'pickup',
             'branch_id' => $branch->id,
@@ -893,7 +887,7 @@ class OrderApiTest extends TestCase
                     ['modifier_option_id' => $option->id, 'price_adjustment' => 5.00],
                 ],
             ]],
-        ], $this->authHeaders($restaurant))
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['items']);
     }
@@ -908,9 +902,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['requires_invoice' => true]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertDatabaseHas('orders', [
@@ -927,9 +920,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertDatabaseHas('orders', [
@@ -946,9 +938,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['requires_invoice' => true]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertStringContainsString('Requiere factura', $response->json('data.whatsapp_message'));
@@ -962,9 +953,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['requires_invoice' => false]),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $this->assertStringNotContainsString('factura', $response->json('data.whatsapp_message'));
@@ -980,9 +970,8 @@ class OrderApiTest extends TestCase
         $this->withDeliveryRange($restaurant, 0, 10, 30.00);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
@@ -1001,9 +990,8 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant, 25.00);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['delivery_type' => 'pickup']),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
@@ -1022,9 +1010,8 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant, 25.00);
 
         $response = $this->postJson(
-            '/api/orders',
+            "/api/public/{$restaurant->slug}/orders",
             $this->deliveryPayload($branch, $product, ['delivery_type' => 'dine_in']),
-            $this->authHeaders($restaurant),
         )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
@@ -1062,14 +1049,17 @@ class OrderApiTest extends TestCase
             'sort_order' => 0,
         ]);
 
-        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
-            'items' => [[
-                'product_id' => $product->id,
-                'quantity' => 1,
-                'unit_price' => 50.00,
-                'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 15.00]],
-            ]],
-        ]), $this->authHeaders($restaurant))->assertCreated();
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->deliveryPayload($branch, $product, [
+                'items' => [[
+                    'product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_price' => 50.00,
+                    'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 15.00]],
+                ]],
+            ]),
+        )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
         $this->assertStringContainsString('Hamburguesa', $message);
@@ -1094,9 +1084,12 @@ class OrderApiTest extends TestCase
             'is_closed' => false,
         ]);
 
-        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
-            'scheduled_at' => $scheduledAt->toISOString(),
-        ]), $this->authHeaders($restaurant))->assertCreated();
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->deliveryPayload($branch, $product, [
+                'scheduled_at' => $scheduledAt->toISOString(),
+            ]),
+        )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
         $this->assertStringContainsString('🕐 Programado para:', $message);
@@ -1109,9 +1102,12 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant, 25.00);
         $this->withDeliveryRange($restaurant);
 
-        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
-            'cash_amount' => 100.00,
-        ]), $this->authHeaders($restaurant))->assertCreated();
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->deliveryPayload($branch, $product, [
+                'cash_amount' => 100.00,
+            ]),
+        )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
         $this->assertStringContainsString('💳 Pago: Efectivo', $message);
@@ -1144,14 +1140,17 @@ class OrderApiTest extends TestCase
             'sort_order' => 0,
         ]);
 
-        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
-            'items' => [[
-                'product_id' => $product->id,
-                'quantity' => 1,
-                'unit_price' => 50.00,
-                'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 0.00]],
-            ]],
-        ]), $this->authHeaders($restaurant))->assertCreated();
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->deliveryPayload($branch, $product, [
+                'items' => [[
+                    'product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_price' => 50.00,
+                    'modifiers' => [['modifier_option_id' => $option->id, 'price_adjustment' => 0.00]],
+                ]],
+            ]),
+        )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
         $this->assertStringContainsString('↳ Salsa Verde', $message);
@@ -1165,15 +1164,18 @@ class OrderApiTest extends TestCase
         $product = $this->product($restaurant, 25.00);
         $this->withDeliveryRange($restaurant);
 
-        $response = $this->postJson('/api/orders', $this->deliveryPayload($branch, $product, [
-            'items' => [[
-                'product_id' => $product->id,
-                'quantity' => 1,
-                'unit_price' => 25.00,
-                'notes' => 'Sin cebolla',
-                'modifiers' => [],
-            ]],
-        ]), $this->authHeaders($restaurant))->assertCreated();
+        $response = $this->postJson(
+            "/api/public/{$restaurant->slug}/orders",
+            $this->deliveryPayload($branch, $product, [
+                'items' => [[
+                    'product_id' => $product->id,
+                    'quantity' => 1,
+                    'unit_price' => 25.00,
+                    'notes' => 'Sin cebolla',
+                    'modifiers' => [],
+                ]],
+            ]),
+        )->assertCreated();
 
         $message = $response->json('data.whatsapp_message');
         $this->assertStringContainsString('📝 Sin cebolla', $message);

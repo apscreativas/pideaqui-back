@@ -158,8 +158,9 @@ gunzip -c /backups/pideaqui-2026-04-01.sql.gz | \
 ### 4.3 Consultas útiles para soporte
 
 ```sql
--- Restaurante por access_token
-SELECT id, name, status, billing_mode FROM restaurants WHERE access_token = '<token>';
+-- Restaurante por slug (identificador URL público)
+SELECT id, name, status, billing_mode, grace_period_ends_at
+FROM restaurants WHERE slug = '<slug>';
 
 -- Pedidos de un restaurante en las últimas 24h
 SELECT id, status, delivery_type, total, created_at
@@ -184,17 +185,23 @@ ORDER BY created_at DESC;
 
 ## 5. Rotación de secrets
 
-### 5.1 `access_token` del restaurante
+### 5.1 Slug del restaurante (identificador URL público)
+
+Desde Abril 2026 el restaurante se identifica en la API pública por su `slug` en la URL (`/api/public/{slug}/*` y `/r/{slug}` en el SPA). No hay token compartido con el cliente — el antiguo `access_token` y el middleware `AuthenticateRestaurantToken` fueron removidos.
+
+Si hay que cambiar el slug (typo del dueño, rebranding, pérdida de acceso):
 
 ```
-1. SuperAdmin → Restaurantes → [restaurante] → "Regenerar token"
-2. Confirmar en modal.
-3. Copiar el nuevo token.
-4. Enviarlo al dueño del restaurante: debe actualizar el VITE_RESTAURANT_TOKEN
-   en el .env de su cliente SPA y re-desplegar.
+1. SuperAdmin → Restaurantes → [restaurante] → "Renombrar slug".
+2. Escribir el nuevo slug (validación en vivo contra reserved + disponibilidad).
+3. Marcar checkbox de confirmación — advierte que QR impresos y links
+   compartidos con el slug anterior dejarán de funcionar.
+4. Confirmar. La ruta es `PATCH /super/restaurants/{id}/slug`.
+5. Se registra en `BillingAudit` con action `restaurant_slug_renamed` +
+   payload `{old_slug, new_slug}`.
 ```
 
-El token viejo queda inválido **inmediatamente**. Pedidos en vuelo que usen el token viejo fallarán con `401`.
+**No hay redirect automático del slug viejo al nuevo.** URLs con el slug antiguo responden 404 inmediatamente desde ese momento. El admin panel NO permite renombrar slug (solo SuperAdmin).
 
 ### 5.2 Password del admin del restaurante
 
