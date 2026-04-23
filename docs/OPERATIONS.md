@@ -20,7 +20,7 @@ Corren automáticamente via `schedule:run`. Si detectas que un restaurante termi
 ### Verificar que el scheduler está vivo
 
 ```bash
-./vendor/bin/sail artisan schedule:list
+php artisan schedule:list
 ```
 
 En Laravel Cloud: en el compute cluster, toggle **"Scheduler"** debe estar ON.
@@ -34,8 +34,8 @@ crontab -l | grep schedule:run
 ### Ejecutar un cron manualmente
 
 ```bash
-./vendor/bin/sail artisan billing:check-grace
-./vendor/bin/sail artisan billing:reconcile
+php artisan billing:check-grace
+php artisan billing:reconcile
 ```
 
 ---
@@ -48,7 +48,7 @@ Síntoma: usuario pagó pero su restaurante sigue en `grace_period`.
 
 ```bash
 # Ver últimos eventos en la tabla de dedup
-./vendor/bin/sail artisan tinker
+php artisan tinker
 >>> StripeWebhookEvent::latest()->take(10)->get(['stripe_event_id', 'type', 'processed_at']);
 
 # Ver si Stripe tiene el evento como "delivered"
@@ -106,7 +106,7 @@ El admin envuelve `broadcast()` en try/catch desde Mar 2026. **El status del ped
 **Desarrollo local:**
 
 ```bash
-./vendor/bin/sail artisan reverb:start
+php artisan reverb:start
 # Debe exponer :8080. Si el puerto está ocupado:
 lsof -i :8080
 kill <PID>

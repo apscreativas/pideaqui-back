@@ -7,6 +7,22 @@
 
 ## Abril 2026
 
+### 2026-04-23
+
+- **Migración del entorno de desarrollo de Laravel Sail a Laravel Herd** — PHP nativo (8.4) servido por Herd + PostgreSQL como servicio de Herd. El sitio queda en `https://pideaqui-backend.test` con TLS local automático. Impacto en docs y dependencias:
+  - `composer remove --dev laravel/sail` ejecutado. `vendor/laravel/sail/` eliminado.
+  - `compose.yaml` eliminado (Docker Compose residual de Sail).
+  - `README.md` reescrito: requisitos previos, instalación, desarrollo, comandos frecuentes y sección de "detener entorno" convertidos a flujo Herd. Ejemplos `curl` actualizados a `https://pideaqui-backend.test`.
+  - `CONTRIBUTING.md`: reglas de `./vendor/bin/sail` sustituidas por comandos directos (`php`, `composer`, `npm`, `vendor/bin/pint`).
+  - `docs/OPERATIONS.md`: todos los `./vendor/bin/sail artisan` reemplazados por `php artisan`.
+  - `docs/ARCHITECTURE.md`: stack actualizado (PHP 8.4, Laravel Herd 1.28+ en lugar de Laravel Sail 1.x).
+  - `docs/modules/13-websockets.md`: comando de arranque de Reverb sin prefijo Sail + nota de `herd proxy` para exponerlo vía TLS local.
+  - `STATUS.md`: fila de infraestructura actualizada ("Laravel Herd (dev)").
+  - `GEMINI.md` resincronizado con `CLAUDE.md` (se removió el bloque obsoleto `=== sail rules ===` que Laravel Boost ya no genera al tener `"sail": false` en `boost.json`).
+  - `.env.example`: `DB_HOST=127.0.0.1`, `DB_USERNAME=root`, `DB_PASSWORD=` (vacío) — defaults de Herd PostgreSQL. `APP_URL=https://pideaqui-backend.test`.
+  - Versión de PHP documentada unificada en 8.4 (antes se mezclaba 8.4 real con 8.5 en docs de deploy).
+- **MCP `laravel-boost` movido a configuración global de Claude Code** (`~/.claude.json`, user scope) ejecutando `php /Users/jdportales/Herd/pideaqui-orchestator/admin/artisan boost:mcp` con ruta absoluta — ya no depende del CWD de la sesión. El `admin/.mcp.json` versionado se mantiene para otros clientes/devs.
+
 ### 2026-04-22
 
 - **Rate limits de API pública recalibrados + 429 en español** — `routes/api.php`:

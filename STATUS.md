@@ -18,7 +18,7 @@
 
 | Área | Estado | Referencia |
 |---|---|---|
-| Infraestructura + Docker Sail | ✅ Estable | [README.md](./README.md) |
+| Infraestructura + Laravel Herd (dev) | ✅ Estable | [README.md](./README.md) |
 | Base de datos (18 tablas dominio + billing + Cashier) | ✅ Estable | [docs/DATABASE.md](./docs/DATABASE.md) |
 | Autenticación + multi-tenancy + 2 roles (admin/operator) | ✅ Estable | [docs/modules/01-auth.md](./docs/modules/01-auth.md) |
 | Panel Admin — Menú + DnD reorder | ✅ Estable | [docs/modules/04-menu.md](./docs/modules/04-menu.md) |
@@ -42,6 +42,10 @@
 | Landing page (repo `landing-pideaqui`) | ✅ Estable | `../landing/README.md` |
 
 ---
+
+## Trabajo reciente (Abr 23)
+
+- **Migración del entorno de desarrollo a Laravel Herd** — se dejó de usar Laravel Sail/Docker para dev. PHP 8.4 corre nativo servido por Herd, PostgreSQL como servicio de Herd en `127.0.0.1:5432`, sitio en `https://pideaqui-backend.test` con TLS local automático. Se removió el paquete `laravel/sail` del `composer.json`, se eliminó `compose.yaml`, y se reescribió la doc (`README.md`, `CONTRIBUTING.md`, `docs/OPERATIONS.md`, `docs/ARCHITECTURE.md`, `docs/modules/13-websockets.md`, `GEMINI.md`, `.env.example`). Detalle completo en [CHANGELOG.md](./CHANGELOG.md) entrada 2026-04-23.
 
 ## Trabajo reciente (Abr 22)
 

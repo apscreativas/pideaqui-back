@@ -6,7 +6,7 @@
 
 ## 1. Setup local
 
-Sigue [README.md](./README.md). En resumen: Laravel Sail + Postgres en Docker.
+Sigue [README.md](./README.md). En resumen: Laravel Herd (PHP nativo) + PostgreSQL servido como servicio de Herd. El sitio queda en `https://pideaqui-backend.test`.
 
 ---
 
@@ -36,9 +36,9 @@ Prefiere nombres como `feat/coupons-history`, `fix/pos-rounding`, `docs/architec
 
 Definidas en `CLAUDE.md` (Laravel Boost guidelines). Puntos clave:
 
-- **Siempre** `vendor/bin/sail` como prefijo (nunca `php`, `artisan`, `composer` directo).
+- Usar `php`, `artisan` y `composer` **directamente** — el entorno lo sirve Herd (PHP 8.4 nativo, sin Docker).
 - Middleware en `bootstrap/app.php` (Laravel 12, no `Http/Kernel.php`).
-- Crear archivos con `sail artisan make:...` (nunca a mano).
+- Crear archivos con `php artisan make:...` (nunca a mano).
 - Siempre pasar `--no-interaction` a comandos Artisan.
 - Validación en **Form Request classes**, nunca inline.
 - API Resources para todos los endpoints REST.
@@ -68,13 +68,13 @@ En inglés, imperativo, ≤72 caracteres en la primera línea. Ejemplos existent
 
 ```bash
 # Suite completa
-./vendor/bin/sail artisan test --compact
+php artisan test --compact
 
 # Archivo específico
-./vendor/bin/sail artisan test --compact tests/Feature/CouponTest.php
+php artisan test --compact tests/Feature/CouponTest.php
 
 # Por filtro
-./vendor/bin/sail artisan test --compact --filter=test_discount_applies_only_to_subtotal
+php artisan test --compact --filter=test_discount_applies_only_to_subtotal
 ```
 
 - Usa **PHPUnit**, no Pest. Si ves un test en Pest, conviértelo a PHPUnit.
@@ -93,7 +93,7 @@ Hoy tenemos **619 tests**. No se aceptan PRs que dejen features nuevas sin test.
 Laravel Pint. Después de modificar PHP:
 
 ```bash
-./vendor/bin/sail bin pint --dirty --format agent
+vendor/bin/pint --dirty --format agent
 ```
 
 No usar `--test`. Solo ejecutar para fixear.

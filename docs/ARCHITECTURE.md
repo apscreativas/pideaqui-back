@@ -20,7 +20,7 @@ PideAquí es una plataforma SaaS multi-restaurante. Tres interfaces + un backend
          └───────────────────┴──────────────────────┘
                          ↓
                 ┌──────────────────────┐
-                │  Laravel 12 (PHP 8.5)│
+                │  Laravel 12 (PHP 8.4)│
                 │  ├── Policies/Guards │
                 │  ├── OrderService    │
                 │  ├── PosSaleService  │
@@ -264,10 +264,10 @@ Comandos manuales (no schedule): `billing:sync-stripe` (crea Products/Prices), `
 
 | Capa | Tecnología | Versión |
 |---|---|---|
-| Lenguaje | PHP | 8.5 |
+| Lenguaje | PHP | 8.4 |
 | Framework | Laravel | 12 |
 | Base de datos | PostgreSQL | 18 |
-| Containerización dev | Laravel Sail | 1.x |
+| Entorno de desarrollo | Laravel Herd | 1.28+ |
 | WebSockets | Laravel Reverb | 1.8 |
 | Billing | Laravel Cashier | Stripe |
 | Bridge SSR admin | Inertia.js | 2 |

@@ -122,10 +122,10 @@ VITE_REVERB_SCHEME=${REVERB_SCHEME}
 
 ```bash
 # Iniciar el servidor WebSocket
-./vendor/bin/sail artisan reverb:start
+php artisan reverb:start
 ```
 
-El puerto 8080 esta expuesto en `compose.yaml`. Sin Reverb corriendo, la app funciona normalmente — los cambios requieren recargar la pagina.
+Reverb escucha en `127.0.0.1:8080` (configurable via `REVERB_HOST` / `REVERB_PORT`). Si quieres exponerlo detras del TLS de Herd, usa `herd proxy reverb http://127.0.0.1:8080`. Sin Reverb corriendo, la app funciona normalmente — los cambios requieren recargar la pagina.
 
 ---
 

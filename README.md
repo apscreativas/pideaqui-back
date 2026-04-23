@@ -10,10 +10,10 @@ Tambien sirve como backend API para la [SPA del cliente](../client/).
 
 | Tecnologia     | Version           |
 | -------------- | ----------------- |
-| PHP            | 8.5               |
+| PHP            | 8.4               |
 | Laravel        | v12               |
 | PostgreSQL     | 18                |
-| Laravel Sail   | v1 (Docker)       |
+| Laravel Herd   | 1.28+             |
 | Laravel Reverb | v1.8 (WebSockets) |
 | Inertia.js     | v2                |
 | Vue 3          | v3                |
@@ -25,23 +25,27 @@ Tambien sirve como backend API para la [SPA del cliente](../client/).
 
 ## Requisitos Previos
 
-- **Docker Desktop** (incluye Docker Compose)
-- **Git**
+- **[Laravel Herd](https://herd.laravel.com/)** (macOS / Windows) — sirve PHP 8.4 nativo, provee PostgreSQL como servicio y expone el sitio en `https://<kebab-case-dir>.test` automaticamente.
+- **Node.js 20+** y **npm** — para compilar los assets del admin.
+- **Git**.
 
-> Todos los comandos se ejecutan a traves de [Laravel Sail](https://laravel.com/docs/sail). No necesitas PHP, Composer ni Node instalados en tu maquina.
+> No se usa Docker ni Sail en desarrollo. El runtime lo sirve Herd directamente contra el sistema de archivos.
 
 ---
 
 ## Instalacion
 
-### 1. Clonar el repositorio
+### 1. Clonar el repositorio dentro del directorio parked de Herd
+
+Clona dentro de la carpeta que Herd tiene "parked" (por default `~/Herd/`). Herd servira el sitio automaticamente en `https://<slug-del-directorio>.test`.
 
 ```bash
-git clone https://github.com/apscreativas/pideaqui-back.git
-cd pideaqui-back
+cd ~/Herd
+git clone https://github.com/apscreativas/pideaqui-back.git pideaqui-backend
+cd pideaqui-backend
 ```
 
-> El backend (este repo) vive independiente de la SPA del cliente (`pideaqui-front`) y de la landing (`landing-pideaqui`). Ver el `README.md` del meta-proyecto si clonaste los tres juntos.
+> El nombre del directorio define la URL local. Con `pideaqui-backend/` el sitio queda en `https://pideaqui-backend.test`. Si vas a clonar los tres repos juntos, ver el `README.md` del meta-workspace (`pideaqui-orchestator`).
 
 ### 2. Copiar variables de entorno
 
@@ -49,46 +53,49 @@ cd pideaqui-back
 cp .env.example .env
 ```
 
-Edita `.env` con los valores correctos (ver seccion [Variables de Entorno](#variables-de-entorno)).
+Ajusta las credenciales de base de datos y el `APP_URL` (Herd lo detecta como `https://pideaqui-backend.test`). Ver seccion [Variables de Entorno](#variables-de-entorno).
 
-### 3. Instalar dependencias PHP (bootstrap sin Sail)
+### 3. Instalar dependencias PHP y JS
 
 ```bash
-docker run --rm \
-    -u "$(id -u):$(id -g)" \
-    -v "$(pwd):/var/www/html" \
-    -w /var/www/html \
-    laravelsail/php85-composer:latest \
-    composer install --ignore-platform-reqs
+composer install
+npm install
 ```
 
-### 4. Levantar los contenedores
+> Si necesitas aislar la version de PHP para este proyecto (por ejemplo PHP 8.4 aunque Herd este global en otra): `herd isolate 8.4`.
+
+### 4. Crear la base de datos
+
+Herd provee PostgreSQL como servicio. Crea la DB que usa el proyecto:
 
 ```bash
-./vendor/bin/sail up -d
+createdb -h 127.0.0.1 -U root pideaqui
 ```
 
-### 5. Generar clave y migrar base de datos
+(o con la GUI de Herd → Services → PostgreSQL → Open). El usuario por defecto es `root` sin password; ajusta `.env` si tu setup es distinto.
+
+### 5. Generar clave y migrar
 
 ```bash
-./vendor/bin/sail artisan key:generate --no-interaction
-./vendor/bin/sail artisan migrate --no-interaction
+php artisan key:generate --no-interaction
+php artisan migrate --no-interaction
 ```
 
 ### 6. (Opcional) Sembrar datos iniciales
 
 ```bash
-./vendor/bin/sail artisan db:seed --no-interaction
+php artisan db:seed --no-interaction
 ```
 
 ### 7. Compilar assets del admin
 
 ```bash
-./vendor/bin/sail npm install
-./vendor/bin/sail npm run build
+npm run build
 ```
 
-El panel de administracion esta disponible en **http://localhost**.
+Durante desarrollo, prefiere `npm run dev` o `composer run dev` (arranca Vite + queue + log viewer concurrentemente — ver [Desarrollo](#desarrollo)).
+
+El panel de administracion esta disponible en **https://pideaqui-backend.test** (el certificado TLS local lo emite Herd automaticamente si el sitio esta securizado; si no, `http://pideaqui-backend.test`).
 
 ---
 
@@ -97,18 +104,18 @@ El panel de administracion esta disponible en **http://localhost**.
 Edita `.env` antes de iniciar. Las variables criticas:
 
 ```dotenv
-# --- Base de datos (Sail los configura automaticamente) ---
+# --- Base de datos (PostgreSQL servido por Herd en 127.0.0.1:5432) ---
 DB_CONNECTION=pgsql
-DB_HOST=pgsql
+DB_HOST=127.0.0.1
 DB_PORT=5432
-DB_DATABASE=laravel
-DB_USERNAME=sail
-DB_PASSWORD=password
+DB_DATABASE=pideaqui
+DB_USERNAME=root
+DB_PASSWORD=
 
 # --- Aplicacion ---
 APP_NAME=PideAqui
 APP_TIMEZONE=America/Mexico_City
-APP_URL=http://localhost          # Cambiar en produccion
+APP_URL=https://pideaqui-backend.test   # URL que expone Herd. Cambiar en produccion
 
 # --- Google Maps ---
 # Se necesitan DOS variables con la misma API key (o keys distintas en produccion):
@@ -162,54 +169,76 @@ La API key de Google Maps necesita tener habilitadas estas APIs en la [Google Cl
 
 ### Levantar todo el entorno de desarrollo
 
+Herd ya sirve el sitio siempre que este "parked" (no se arranca manualmente). Para el stack de desarrollo completo (Vite HMR + queue worker + log viewer):
+
 ```bash
-./vendor/bin/sail up -d
-./vendor/bin/sail composer run dev
+composer run dev
 ```
 
 Esto inicia concurrentemente:
 
-- Servidor Laravel
-- Queue worker
-- Log viewer (Pail)
-- Vite dev server con HMR
+- Queue worker (`php artisan queue:listen`)
+- Log viewer (Laravel Pail)
+- Vite dev server con HMR (`npm run dev`)
+
+Si necesitas algo mas granular, corre cada uno por separado:
+
+```bash
+php artisan queue:listen --tries=1
+php artisan pail --timeout=0
+npm run dev
+```
+
+### Servicios de Herd
+
+El sitio, PHP y PostgreSQL los arranca la app de Herd. Desde CLI:
+
+```bash
+herd start                 # Arranca PHP + Nginx + servicios (DB, etc.)
+herd stop                  # Apaga todo
+herd services:list         # Estado de servicios (PostgreSQL, MySQL, Redis…)
+herd services:start postgresql
+herd sites                 # Lista de sitios parked y su URL
+herd open                  # Abre el sitio actual en el browser
+herd secure                # Emite certificado TLS local para el sitio actual
+```
 
 ### WebSockets en desarrollo
 
-Para activar el tablero Kanban en tiempo real durante desarrollo:
+Para activar el tablero Kanban en tiempo real:
 
 ```bash
-./vendor/bin/sail artisan reverb:start
+php artisan reverb:start
 ```
 
-Esto inicia el servidor WebSocket en `localhost:8080`. Los eventos de pedidos (`OrderCreated`, `OrderStatusChanged`, `OrderCancelled`) se transmitiran automaticamente al tablero.
+Reverb escucha en `127.0.0.1:8080`. Los eventos (`OrderCreated`, `OrderStatusChanged`, `OrderCancelled`) se transmitiran al tablero. Si quieres exponerlo via el TLS de Herd:
 
-> Si no necesitas WebSockets durante desarrollo, la app funciona igual — los cambios simplemente no se reflejan en tiempo real (se requiere recargar la pagina).
+```bash
+herd proxy reverb http://127.0.0.1:8080
+```
+
+> Sin Reverb corriendo la app funciona igual — los cambios simplemente no se reflejan en tiempo real (requiere recargar la pagina).
 
 ### Comandos frecuentes
 
 ```bash
-# Levantar / detener contenedores
-./vendor/bin/sail up -d
-./vendor/bin/sail stop
-
 # Migraciones
-./vendor/bin/sail artisan migrate --no-interaction
-./vendor/bin/sail artisan migrate:rollback --no-interaction
+php artisan migrate --no-interaction
+php artisan migrate:rollback --no-interaction
 
 # Crear archivos (siempre usar artisan make:)
-./vendor/bin/sail artisan make:model NombreModelo -mf --no-interaction
-./vendor/bin/sail artisan make:controller NombreController --no-interaction
-./vendor/bin/sail artisan make:test NombreTest --no-interaction
+php artisan make:model NombreModelo -mf --no-interaction
+php artisan make:controller NombreController --no-interaction
+php artisan make:test NombreTest --no-interaction
 
 # Formatear codigo PHP
-./vendor/bin/sail bin pint --dirty --format agent
+vendor/bin/pint --dirty --format agent
 
 # Compilar assets para produccion
-./vendor/bin/sail npm run build
+npm run build
 
 # Abrir la app en el navegador
-./vendor/bin/sail open
+herd open
 ```
 
 ---
@@ -220,13 +249,13 @@ Se usa **PHPUnit** (no Pest). Los tests son principalmente feature tests.
 
 ```bash
 # Ejecutar toda la suite
-./vendor/bin/sail artisan test --compact
+php artisan test --compact
 
 # Ejecutar un archivo de tests especifico
-./vendor/bin/sail artisan test --compact tests/Feature/OrderApiTest.php
+php artisan test --compact tests/Feature/OrderApiTest.php
 
 # Ejecutar un test especifico por nombre
-./vendor/bin/sail artisan test --compact --filter=test_create_delivery_order
+php artisan test --compact --filter=test_create_delivery_order
 ```
 
 ---
@@ -300,7 +329,7 @@ El tenant se resuelve desde la URL (`/api/public/{slug}/*`) via middleware `Reso
 
 ```bash
 curl -H "Accept: application/json" \
-     http://localhost/api/public/el-puebla/restaurant
+     https://pideaqui-backend.test/api/public/el-puebla/restaurant
 ```
 
 Respuestas de error del middleware: `404 {code:"tenant_not_found"}` si el slug no existe; `410 {code:"tenant_unavailable"}` si el restaurante no puede recibir pedidos (status suspended, past_due, incomplete, disabled, o período vencido). Errores `429` retornan JSON en español con `retry_after` vía handler global en `bootstrap/app.php`.
@@ -730,7 +759,7 @@ volumes:
 #### 4. Crear `Dockerfile.prod`
 
 ```dockerfile
-FROM php:8.5-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 # Extensiones requeridas
 RUN apk add --no-cache \
@@ -847,7 +876,7 @@ Para desplegar directamente en un servidor sin Docker.
 
 #### Requisitos del servidor
 
-- PHP 8.5 con extensiones: `pgsql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `gd`
+- PHP 8.4 con extensiones: `pgsql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `gd`
 - PostgreSQL 16+
 - Nginx o Apache
 - Node.js 20+ (solo para compilar assets)
@@ -918,7 +947,7 @@ server {
     error_page 404 /index.php;
 
     location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php8.5-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include fastcgi_params;
     }
@@ -1035,8 +1064,11 @@ sudo systemctl start pideaqui-worker pideaqui-reverb
 
 ## Detener el Entorno Local
 
+Herd sirve los sitios mientras este corriendo. No hay que "bajar" nada por proyecto — basta con cerrar los procesos que arrancaste tu (Vite, queue, Reverb). Si quieres liberar recursos completamente:
+
 ```bash
-./vendor/bin/sail stop       # Detener contenedores (conserva datos)
-./vendor/bin/sail down        # Detener y eliminar contenedores
-./vendor/bin/sail down -v     # Detener, eliminar contenedores y volumenes (resetea BD)
+herd stop                  # Apaga PHP + Nginx + servicios (se relanzan con `herd start`)
+herd services:stop postgresql   # Apagar solo un servicio puntual
 ```
+
+Los datos de PostgreSQL persisten en el volumen que gestiona Herd; apagar el servicio no los borra.
