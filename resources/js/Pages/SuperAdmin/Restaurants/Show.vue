@@ -4,6 +4,7 @@ import { ref, computed } from 'vue'
 import SuperAdminLayout from '@/Layouts/SuperAdminLayout.vue'
 import SlugInput from '@/Components/SlugInput.vue'
 import QrCode from '@/Components/QrCode.vue'
+import DatePicker from '@/Components/DatePicker.vue'
 
 const props = defineProps({
     restaurant: Object,
@@ -32,8 +33,13 @@ const slugForm = useForm({
     confirm: false,
 })
 
+const copiedToast = ref(false)
+let copiedTimer = null
 function copyPublicUrl() {
     navigator.clipboard.writeText(publicMenuUrl.value)
+    copiedToast.value = true
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copiedToast.value = false }, 2000)
 }
 
 function downloadQr() {
@@ -455,11 +461,13 @@ function sendVerification() {
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Inicio del periodo</label>
-                                    <input v-model="limitsForm.orders_limit_start" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <DatePicker v-model="limitsForm.orders_limit_start" placeholder="Selecciona fecha" :has-error="!!limitsForm.errors.orders_limit_start" />
+                                    <p v-if="limitsForm.errors.orders_limit_start" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_start }}</p>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Fin del periodo</label>
-                                    <input v-model="limitsForm.orders_limit_end" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                    <DatePicker v-model="limitsForm.orders_limit_end" placeholder="Selecciona fecha" :has-error="!!limitsForm.errors.orders_limit_end" />
+                                    <p v-if="limitsForm.errors.orders_limit_end" class="text-xs text-red-500 mt-1">{{ limitsForm.errors.orders_limit_end }}</p>
                                 </div>
                             </div>
                             <div class="flex gap-3">
@@ -717,11 +725,11 @@ function sendVerification() {
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Inicio periodo</label>
-                                <input v-model="limitsForm.orders_limit_start" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                <DatePicker v-model="limitsForm.orders_limit_start" placeholder="Selecciona fecha" />
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Fin periodo</label>
-                                <input v-model="limitsForm.orders_limit_end" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF5722]/50" />
+                                <DatePicker v-model="limitsForm.orders_limit_end" placeholder="Selecciona fecha" />
                             </div>
                         </div>
                         <div class="flex justify-end gap-3 pt-2">
@@ -733,6 +741,28 @@ function sendVerification() {
                     </form>
                 </div>
             </div>
+        </Teleport>
+
+        <!-- Copied toast -->
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transition duration-200 ease-out"
+                enter-from-class="opacity-0 translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition duration-150 ease-in"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 translate-y-2"
+            >
+                <div
+                    v-if="copiedToast"
+                    role="status"
+                    aria-live="polite"
+                    class="fixed bottom-6 right-6 z-[60] flex items-center gap-2 bg-gray-900 text-white rounded-xl shadow-lg shadow-gray-900/20 px-4 py-3 text-sm font-medium"
+                >
+                    <span class="material-symbols-outlined text-base text-green-400">check_circle</span>
+                    URL copiada al portapapeles
+                </div>
+            </Transition>
         </Teleport>
     </SuperAdminLayout>
 </template>
