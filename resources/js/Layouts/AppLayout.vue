@@ -84,15 +84,12 @@ function logout() {
             <!-- Logo -->
             <div class="px-6 py-5 border-b border-gray-100">
                 <div class="flex items-center gap-3">
-                    <div class="bg-orange-50 p-2 rounded-xl">
-                        <span class="material-symbols-outlined text-[#FF5722] text-2xl" style="font-variation-settings:'FILL' 1">
-                            local_fire_department
-                        </span>
-                    </div>
-                    <div>
-                        <p class="font-bold text-gray-900 text-sm leading-tight">PideAqui</p>
-                        <p class="text-xs text-gray-400">Panel Admin</p>
-                    </div>
+                    <img
+                        :src="'/images/logo.png'"
+                        alt="PideAqui"
+                        class="h-10 w-auto"
+                    />
+                    <p class="text-xs text-gray-400">Panel Admin</p>
                 </div>
             </div>
 
