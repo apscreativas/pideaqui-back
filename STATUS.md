@@ -1,6 +1,6 @@
 # PideAquí — Estado Actual
 
-> Snapshot del estado del producto al **22 de abril de 2026**.
+> Snapshot del estado del producto al **27 de abril de 2026**.
 > Para el historial cronológico detallado, ver [CHANGELOG.md](./CHANGELOG.md).
 
 ---
@@ -42,6 +42,11 @@
 | Landing page (repo `landing-pideaqui`) | ✅ Estable | `../landing/README.md` |
 
 ---
+
+## Trabajo reciente (Abr 27)
+
+- **Branding con logotipo de marca** — se reemplazó el icono `local_fire_department` + texto "PideAqui" por la imagen `public/images/logo.png` en los tres puntos de contacto principales: pantalla de login (`/login`), header del sidebar autenticado (`AppLayout`, visible en `/dashboard` y demás), y header de correos transaccionales (`vendor/mail/html/header.blade.php`, aplica a verify-email, password reset, new order, grace expiring). En el login y sidebar se usa binding dinámico `:src="'/images/logo.png'"` para evitar que Vite/Rollup intente resolver la ruta absoluta como import en build. En correos se usa `asset('images/logo.png')` para garantizar URL absoluta. Detalle en [CHANGELOG.md](./CHANGELOG.md) entrada 2026-04-27. **Pendiente**: `SuperAdminLayout.vue` sigue con el icono antiguo.
+- **(Cliente SPA — pideaqui-front)** Bug fix de navegación en el flujo de checkout: los botones "back" del header en `CartSummary`, `DeliveryLocation` y `PaymentConfirmation` usaban `router.back()`, lo que podía sacar al usuario del sitio cuando llegaba desde un enlace externo (WhatsApp, redes). Ahora navegan a la ruta del paso previo del flujo (`/`, `/cart`, `/delivery`); el guard del router reescribe a `/r/:slug/...` automáticamente.
 
 ## Trabajo reciente (Abr 23)
 

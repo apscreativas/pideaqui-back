@@ -7,6 +7,17 @@
 
 ## Abril 2026
 
+### 2026-04-27
+
+- **Branding visual unificado con logotipo de marca** — se reemplazaron los placeholders icónicos (`material-symbols/local_fire_department` + texto "PideAqui") por la imagen de marca en los puntos de contacto principales:
+  - Asset agregado en `public/images/logo.png` (carpeta estándar de Laravel para estáticos servidos directamente; URL pública `/images/logo.png`).
+  - **Login** (`resources/js/Pages/Auth/Login.vue`): bloque de icono + título "PideAqui" sustituido por `<img>` del logo (`h-20`), conservando el subtítulo "Panel de administración".
+  - **Sidebar autenticado** (`resources/js/Layouts/AppLayout.vue`): mismo reemplazo en el header del sidebar (`h-10`), conservando el subtítulo "Panel Admin". Aplica a `/dashboard` y todas las vistas que extienden `AppLayout`.
+  - **Header de correos transaccionales** (`resources/views/vendor/mail/html/header.blade.php`): el `<span>` con texto `🔥 PideAqui` cambia a `<img src="{{ asset('images/logo.png') }}">` con `height="60"` (atributo + `style` inline para máxima compatibilidad con clientes de correo). Aplica a verify-email, password reset, new order y grace expiring (todas usan el layout `vendor/mail/html`).
+  - **Detalle Vite/Rollup**: el `<img src="/images/logo.png">` estático rompía `npm run build` porque `@vitejs/plugin-vue` con `transformAssetUrls.includeAbsolute=true` (default) intenta resolver rutas absolutas como imports. Solución localizada: binding dinámico `:src="'/images/logo.png'"` para que el compilador del template no lo procese y la URL se resuelva en runtime contra el origen del sitio.
+  - El `SuperAdminLayout.vue` (`/super/...`) sigue con el icono antiguo intencionalmente; pendiente unificar si se decide.
+- **(Cliente SPA)** Botones "back" del flujo de checkout dejan de usar `router.back()` — ver [pideaqui-front commit `4ccc39f`](https://github.com/apscreativas/pideaqui-front/commit/4ccc39f). El back del navegador podía sacar al usuario del sitio cuando llegaba desde un enlace externo (WhatsApp, redes), perdiendo el contexto del tenant. Ahora `CartSummary → /` (menú), `DeliveryLocation → /cart`, `PaymentConfirmation → /delivery`. El guard del router reescribe esas rutas legacy al slug activo. Se anota aquí para trazabilidad cross-repo.
+
 ### 2026-04-23
 
 - **Migración del entorno de desarrollo de Laravel Sail a Laravel Herd** — PHP nativo (8.4) servido por Herd + PostgreSQL como servicio de Herd. El sitio queda en `https://pideaqui-backend.test` con TLS local automático. Impacto en docs y dependencias:
