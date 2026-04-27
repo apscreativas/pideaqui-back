@@ -25,12 +25,11 @@ function submit() {
 
             <!-- Logo -->
             <div class="flex flex-col items-center mb-8">
-                <div class="bg-orange-50 p-3 rounded-2xl mb-3">
-                    <span class="material-symbols-outlined text-[#FF5722] text-4xl" style="font-variation-settings:'FILL' 1">
-                        local_fire_department
-                    </span>
-                </div>
-                <h1 class="text-2xl font-bold text-gray-900 tracking-tight">PideAqui</h1>
+                <img
+                    :src="'/images/logo.png'"
+                    alt="PideAqui"
+                    class="h-20 w-auto mb-3"
+                />
                 <p class="text-sm text-gray-500 mt-1">Panel de administración</p>
             </div>
 
