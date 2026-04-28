@@ -22,7 +22,7 @@ const form = useForm({
     name: props.product.name,
     description: props.product.description ?? '',
     price: props.product.price,
-    production_cost: props.product.production_cost ?? '',
+    production_cost: props.product.production_cost ?? null,
     category_id: props.product.category_id,
     is_active: props.product.is_active,
     image: null,

@@ -15,6 +15,13 @@ class UpdateProductRequest extends FormRequest
     /**
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
+    protected function prepareForValidation(): void
+    {
+        if ($this->production_cost === '' || $this->production_cost === null) {
+            $this->merge(['production_cost' => 0]);
+        }
+    }
+
     public function rules(): array
     {
         return [
