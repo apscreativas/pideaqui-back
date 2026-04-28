@@ -7,6 +7,15 @@
 
 ## Abril 2026
 
+### 2026-04-28
+
+- **Fix: `production_cost` vacío ya no rompe la creación/edición de productos** — El campo "Costo de producción" en `/menu/products/create` y `/menu/products/{id}/edit` causaba un server error al dejarse en blanco. Raíz: Laravel 12 no incluye `ConvertEmptyStringsToNull` en el middleware global por defecto, por lo que el string vacío `""` llegaba a la regla `numeric` de validación y fallaba (a pesar de ser `nullable`). Solución: se agrega `prepareForValidation()` en `StoreProductRequest` y `UpdateProductRequest` que normaliza `""` y `null` a `0` antes de la validación. En el frontend (`Create.vue` y `Edit.vue`) el inicializador cambia de `''` a `null` para consistencia semántica. Producción default: `$0.00`.
+- **Feature: eliminar imagen de producto en edición** — La vista `/menu/products/{id}/edit` no ofrecía forma de quitar la imagen de un producto; el único camino era reemplazarla por otra. Se agrega:
+  - Botón "Eliminar imagen" (rojo, aparece debajo del preview solo cuando hay imagen) en `resources/js/Pages/Products/Edit.vue`. Al pulsarlo: limpia el preview, pone `form.image = null` y activa `form.remove_image = true`. Mensaje informativo "Se usará la imagen predeterminada al guardar." aparece tras eliminación.
+  - Al seleccionar una nueva imagen, `remove_image` se resetea a `false` automáticamente — no pueden coexistir ambas acciones.
+  - Campo `remove_image` agregado a `UpdateProductRequest` (`nullable|boolean`).
+  - En `ProductController@update`: si `remove_image=true`, borra el archivo del storage y pone `image_path = null`; si llega un archivo nuevo, aplica el reemplazo normal (`if/elseif` — mutuamente excluyentes).
+
 ### 2026-04-27
 
 - **Branding visual unificado con logotipo de marca** — se reemplazaron los placeholders icónicos (`material-symbols/local_fire_department` + texto "PideAqui") por la imagen de marca en los puntos de contacto principales:

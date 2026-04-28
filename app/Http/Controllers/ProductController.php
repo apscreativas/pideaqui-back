@@ -86,16 +86,20 @@ class ProductController extends Controller
         $data = $request->validated();
         $data['is_active'] = $data['is_active'] ?? $product->is_active;
 
-        if ($request->hasFile('image')) {
+        $removeImage = (bool) ($data['remove_image'] ?? false);
+        $modifierGroups = $data['modifier_groups'] ?? [];
+        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
+        unset($data['image'], $data['remove_image'], $data['modifier_groups'], $data['catalog_template_ids']);
+
+        if ($removeImage && $product->image_path) {
+            Storage::disk(config('filesystems.media_disk', 'public'))->delete($product->image_path);
+            $data['image_path'] = null;
+        } elseif ($request->hasFile('image')) {
             if ($product->image_path) {
                 Storage::disk(config('filesystems.media_disk', 'public'))->delete($product->image_path);
             }
             $data['image_path'] = $request->file('image')->store('products', config('filesystems.media_disk', 'public'));
         }
-
-        $modifierGroups = $data['modifier_groups'] ?? [];
-        $catalogTemplateIds = $data['catalog_template_ids'] ?? [];
-        unset($data['image'], $data['modifier_groups'], $data['catalog_template_ids']);
 
         $product->update($data);
 

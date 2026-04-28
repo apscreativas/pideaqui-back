@@ -1,6 +1,6 @@
 # PideAquí — Estado Actual
 
-> Snapshot del estado del producto al **27 de abril de 2026**.
+> Snapshot del estado del producto al **28 de abril de 2026**.
 > Para el historial cronológico detallado, ver [CHANGELOG.md](./CHANGELOG.md).
 
 ---
@@ -42,6 +42,11 @@
 | Landing page (repo `landing-pideaqui`) | ✅ Estable | `../landing/README.md` |
 
 ---
+
+## Trabajo reciente (Abr 28)
+
+- **Fix `production_cost` vacío** — dejar el campo "Costo de producción" en blanco al crear o editar un producto generaba server error. Causa: Laravel 12 no incluye `ConvertEmptyStringsToNull` por defecto; el string vacío `""` fallaba la validación `numeric`. `prepareForValidation()` en `StoreProductRequest` y `UpdateProductRequest` normaliza a `0`. Inicializadores en `Create.vue` y `Edit.vue` cambiados de `''` a `null`.
+- **Feature: eliminar imagen en edición de producto** — `/menu/products/{id}/edit` ahora incluye botón "Eliminar imagen" bajo el preview. Al confirmar, `image_path` se pone a `null` en BD y el archivo se borra del storage. El producto queda con imagen predeterminada. Campo `remove_image` agregado a `UpdateProductRequest` y manejado en `ProductController@update`.
 
 ## Trabajo reciente (Abr 27)
 
@@ -102,4 +107,4 @@ No hay deadlines duros activos. Prioridades identificadas en [ROADMAP.md](./docs
 
 ---
 
-_Estado — PideAquí Backend — 2026-04-22_
+_Estado — PideAquí Backend — 2026-04-28_

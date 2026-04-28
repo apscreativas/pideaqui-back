@@ -33,6 +33,7 @@ class UpdateProductRequest extends FormRequest
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['boolean'],
             'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:2048'],
+            'remove_image' => ['nullable', 'boolean'],
             'catalog_template_ids' => ['nullable', 'array'],
             'catalog_template_ids.*' => ['integer', Rule::exists('modifier_group_templates', 'id')->where('restaurant_id', $this->user()->restaurant_id)],
             'modifier_groups' => ['nullable', 'array'],

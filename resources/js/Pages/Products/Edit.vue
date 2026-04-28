@@ -12,6 +12,7 @@ const props = defineProps({
 
 const imagePreview = ref(props.product.image_url ?? null)
 const sizeWarning = ref(null)
+const imageInput = ref(null)
 const showCatalogPicker = ref(false)
 const linkedTemplateIds = ref(
     (props.product.modifier_group_templates || []).map(t => t.id)
@@ -26,6 +27,7 @@ const form = useForm({
     category_id: props.product.category_id,
     is_active: props.product.is_active,
     image: null,
+    remove_image: false,
     modifier_groups: (props.product.modifier_groups || []).map(g => ({
         id: g.id,
         name: g.name,
@@ -66,10 +68,20 @@ function removeCatalogTemplate(templateId) {
 const IMAGE_MAX_MB = 2
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp'
 
+function removeImage() {
+    imagePreview.value = null
+    form.image = null
+    form.remove_image = true
+    sizeWarning.value = null
+    form.clearErrors('image')
+    if (imageInput.value) { imageInput.value.value = '' }
+}
+
 function handleImageChange(event) {
     const file = event.target.files[0]
     if (!file) { return }
     form.clearErrors('image')
+    form.remove_image = false
     sizeWarning.value = null
 
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
@@ -450,7 +462,7 @@ function submit() {
                     <h2 class="font-semibold text-gray-900 mb-4">Imagen del Producto</h2>
                     <div
                         class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-[#FF5722]/40 transition-colors cursor-pointer bg-orange-50/30"
-                        @click="$refs.imageInput.click()"
+                        @click="imageInput.click()"
                     >
                         <img v-if="imagePreview" :src="imagePreview" class="mx-auto h-32 w-32 object-cover rounded-xl mb-3" />
                         <div v-if="!imagePreview" class="flex flex-col items-center">
@@ -466,6 +478,16 @@ function submit() {
                     </div>
                     <p v-if="form.errors.image" class="mt-1 text-xs text-red-500">{{ form.errors.image }}</p>
                     <p v-if="sizeWarning && !form.errors.image" class="mt-1 text-xs text-amber-600">{{ sizeWarning }}</p>
+                    <button
+                        v-if="imagePreview"
+                        type="button"
+                        @click.stop="removeImage"
+                        class="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 rounded-xl py-2 transition-colors"
+                    >
+                        <span class="material-symbols-outlined text-base">delete</span>
+                        Eliminar imagen
+                    </button>
+                    <p v-if="form.remove_image && !imagePreview" class="mt-3 text-xs text-center text-gray-400">Se usará la imagen predeterminada al guardar.</p>
                 </div>
 
                 <!-- Organización -->
