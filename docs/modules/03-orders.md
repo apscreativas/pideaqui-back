@@ -295,7 +295,7 @@ public function update(
 | `items.*.product_id` \| `items.*.promotion_id` | uno u otro |
 | `items.*.quantity` | integer, min:1, max:100 |
 | `items.*.unit_price` | numeric, max:99999.99 |
-| `items.*.modifiers.*.modifier_option_id` \| `modifier_option_template_id` | uno u otro, distinct |
+| `items.*.modifiers.*.modifier_option_id` \| `modifier_option_template_id` | uno u otro; unicidad **por item** vía trait `ValidatesItemModifiers` (no `distinct` global — varios items pueden compartir la misma opción del catálogo) |
 | `address_street`, `number`, `colony`, `references` | sometimes, nullable |
 | `latitude`, `longitude` | sometimes, nullable |
 | `payment_method` | sometimes, in:cash,terminal,transfer |
