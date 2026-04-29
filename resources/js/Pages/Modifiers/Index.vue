@@ -3,6 +3,9 @@ import { Head, useForm, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import ToggleSwitch from '@/Components/ToggleSwitch.vue'
+import { useDragSort } from '@/Composables/useDragSort'
+
+const dnd = useDragSort()
 
 const props = defineProps({
     templates: Array,
@@ -233,7 +236,9 @@ function toggleTemplate(template) {
                                     + Agregar opción
                                 </button>
                             </div>
+                            <p v-if="form.options.length > 1" class="text-xs text-gray-400 mb-2">Arrastra para reordenar las opciones.</p>
                             <div class="flex items-center gap-2 mb-1 text-xs text-gray-400">
+                                <span class="w-6"></span>
                                 <span class="flex-1">Nombre</span>
                                 <span class="w-24">Precio</span>
                                 <span class="w-24">Costo prod.</span>
@@ -241,7 +246,25 @@ function toggleTemplate(template) {
                                 <span class="w-6"></span>
                             </div>
                             <div class="space-y-2">
-                                <div v-for="(option, oi) in form.options" :key="oi" class="flex items-center gap-2">
+                                <div
+                                    v-for="(option, oi) in form.options"
+                                    :key="oi"
+                                    class="flex items-center gap-2 rounded-lg transition-all"
+                                    :class="[
+                                        dnd.isOver('options', oi) ? 'ring-2 ring-[#FF5722]/40 bg-orange-50/50' : '',
+                                        dnd.isDragging('options', oi) ? 'opacity-50' : '',
+                                    ]"
+                                    draggable="true"
+                                    @dragstart="dnd.onDragStart('options', oi, $event)"
+                                    @dragover="dnd.onDragOver('options', oi, $event)"
+                                    @dragleave="dnd.onDragLeave('options', oi)"
+                                    @drop="dnd.onDrop('options', oi, form.options, $event)"
+                                    @dragend="dnd.onDragEnd"
+                                >
+                                    <span
+                                        class="material-symbols-outlined text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing select-none w-6 text-base"
+                                        title="Arrastra para reordenar"
+                                    >drag_indicator</span>
                                     <div class="flex-1">
                                         <input
                                             v-model="option.name"

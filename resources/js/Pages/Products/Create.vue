@@ -3,6 +3,9 @@ import { Head, useForm, Link } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import ToggleSwitch from '@/Components/ToggleSwitch.vue'
+import { useDragSort } from '@/Composables/useDragSort'
+
+const dnd = useDragSort()
 
 const props = defineProps({
     categories: Array,
@@ -285,14 +288,31 @@ function submit() {
                         No hay grupos de modificadores. Agrega uno para ofrecer opciones como tamaño, extras, etc.
                     </p>
 
-                    <div v-else class="space-y-4">
+                    <p v-if="form.modifier_groups.length > 1" class="text-xs text-gray-400 mb-2">Arrastra los grupos o sus opciones desde el icono <span class="material-symbols-outlined text-sm align-middle">drag_indicator</span> para reordenarlos.</p>
+                    <div v-else-if="form.modifier_groups.length === 1" class="text-xs text-gray-400 mb-2">Arrastra las opciones para cambiar su orden.</div>
+
+                    <div v-if="form.modifier_groups.length > 0" class="space-y-4">
                         <div
                             v-for="(group, gi) in form.modifier_groups"
                             :key="gi"
-                            class="border border-gray-200 rounded-xl p-4"
+                            class="border rounded-xl p-4 transition-all"
+                            :class="[
+                                dnd.isOver('groups', gi) ? 'border-[#FF5722] ring-2 ring-[#FF5722]/20' : 'border-gray-200',
+                                dnd.isDragging('groups', gi) ? 'opacity-50' : '',
+                            ]"
+                            draggable="true"
+                            @dragstart="dnd.onDragStart('groups', gi, $event)"
+                            @dragover="dnd.onDragOver('groups', gi, $event)"
+                            @dragleave="dnd.onDragLeave('groups', gi)"
+                            @drop="dnd.onDrop('groups', gi, form.modifier_groups, $event)"
+                            @dragend="dnd.onDragEnd"
                         >
                             <!-- Group header -->
                             <div class="flex items-start gap-3 mb-3">
+                                <span
+                                    class="material-symbols-outlined text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing select-none mt-2"
+                                    title="Arrastra para reordenar el grupo"
+                                >drag_indicator</span>
                                 <div class="flex-1 space-y-3">
                                     <input
                                         v-model="group.name"
@@ -353,6 +373,7 @@ function submit() {
                                 <p v-if="form.errors[`modifier_groups.${gi}.options`]" class="text-xs text-red-500 mb-1">{{ form.errors[`modifier_groups.${gi}.options`] }}</p>
                                 <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Opciones</p>
                                 <div class="flex items-center gap-2 mb-1">
+                                    <span class="w-6"></span>
                                     <span class="flex-1 text-xs text-gray-400">Nombre</span>
                                     <span class="w-24 text-xs text-gray-400">Precio</span>
                                     <span class="w-24 text-xs text-gray-400">Costo prod.</span>
@@ -362,8 +383,22 @@ function submit() {
                                 <div
                                     v-for="(option, oi) in group.options"
                                     :key="oi"
-                                    class="flex items-center gap-2"
+                                    class="flex items-center gap-2 rounded-lg transition-all"
+                                    :class="[
+                                        dnd.isOver(`options:${gi}`, oi) ? 'ring-2 ring-[#FF5722]/40 bg-orange-50/50' : '',
+                                        dnd.isDragging(`options:${gi}`, oi) ? 'opacity-50' : '',
+                                    ]"
+                                    draggable="true"
+                                    @dragstart.stop="dnd.onDragStart(`options:${gi}`, oi, $event)"
+                                    @dragover.stop="dnd.onDragOver(`options:${gi}`, oi, $event)"
+                                    @dragleave.stop="dnd.onDragLeave(`options:${gi}`, oi)"
+                                    @drop.stop="dnd.onDrop(`options:${gi}`, oi, group.options, $event)"
+                                    @dragend.stop="dnd.onDragEnd"
                                 >
+                                    <span
+                                        class="material-symbols-outlined text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing select-none w-6 text-base"
+                                        title="Arrastra para reordenar"
+                                    >drag_indicator</span>
                                     <div class="flex-1">
                                         <input
                                             v-model="option.name"
