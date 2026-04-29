@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesItemModifiers;
 use App\Models\PosSale;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StorePosSaleRequest extends FormRequest
 {
+    use ValidatesItemModifiers;
+
     public function authorize(): bool
     {
         return $this->user()?->can('viewAny', PosSale::class) ?? false;
@@ -25,8 +28,8 @@ class StorePosSaleRequest extends FormRequest
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:99999.99'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
             'items.*.modifiers' => ['nullable', 'array', 'max:20'],
-            'items.*.modifiers.*.modifier_option_id' => ['nullable', 'integer', 'min:1', 'distinct', 'required_without:items.*.modifiers.*.modifier_option_template_id'],
-            'items.*.modifiers.*.modifier_option_template_id' => ['nullable', 'integer', 'min:1', 'distinct', 'required_without:items.*.modifiers.*.modifier_option_id'],
+            'items.*.modifiers.*.modifier_option_id' => ['nullable', 'integer', 'min:1', 'required_without:items.*.modifiers.*.modifier_option_template_id'],
+            'items.*.modifiers.*.modifier_option_template_id' => ['nullable', 'integer', 'min:1', 'required_without:items.*.modifiers.*.modifier_option_id'],
             'items.*.modifiers.*.price_adjustment' => ['required', 'numeric', 'min:0', 'max:99999.99'],
         ];
     }

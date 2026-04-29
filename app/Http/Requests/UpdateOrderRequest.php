@@ -2,10 +2,13 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesItemModifiers;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateOrderRequest extends FormRequest
 {
+    use ValidatesItemModifiers;
+
     public function authorize(): bool
     {
         return true;
@@ -25,8 +28,8 @@ class UpdateOrderRequest extends FormRequest
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1', 'max:100'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
             'items.*.modifiers' => ['nullable', 'array', 'max:20'],
-            'items.*.modifiers.*.modifier_option_id' => ['nullable', 'integer', 'min:1', 'distinct', 'required_without:items.*.modifiers.*.modifier_option_template_id'],
-            'items.*.modifiers.*.modifier_option_template_id' => ['nullable', 'integer', 'min:1', 'distinct', 'required_without:items.*.modifiers.*.modifier_option_id'],
+            'items.*.modifiers.*.modifier_option_id' => ['nullable', 'integer', 'min:1', 'required_without:items.*.modifiers.*.modifier_option_template_id'],
+            'items.*.modifiers.*.modifier_option_template_id' => ['nullable', 'integer', 'min:1', 'required_without:items.*.modifiers.*.modifier_option_id'],
 
             // Address fields (optional — only sent when address changes)
             'address_street' => ['sometimes', 'nullable', 'string', 'max:255'],
