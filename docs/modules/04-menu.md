@@ -63,7 +63,8 @@ Formulario completo en pantalla completa (no modal).
 - Dentro de cada grupo: lista de opciones con nombre, precio adicional ($), costo de producción ($).
 - Botón "Agregar opción" dentro de cada grupo.
 - Botón eliminar por opción (mínimo 1 opción por grupo).
-- Al guardar el producto, se sincronizan los grupos y opciones: existentes se actualizan, nuevos se crean, eliminados se borran.
+- **Drag-and-drop** (Abr 2026): los **grupos** se pueden reordenar arrastrando la tarjeta completa, y las **opciones dentro de cada grupo** se reordenan arrastrando la fila desde el icono `drag_indicator`. Mismo comportamiento en `Products/Create.vue` y `Products/Edit.vue`. Implementado con HTML5 DnD nativo vía composable `resources/js/Composables/useDragSort.js` (parámetro `scope` aísla listas: `'groups'` vs `'options:${gi}'`). El `sort_order` se persiste por índice del array al guardar — sin endpoint dedicado.
+- Al guardar el producto, se sincronizan los grupos y opciones: existentes se actualizan, nuevos se crean, eliminados se borran. El `sort_order` se reasigna a partir del índice del array recibido (ver `app/Http/Controllers/Concerns/SyncsModifierGroups.php`).
 
 ---
 
@@ -105,6 +106,7 @@ precio_final = product.price + Σ modifier_option.price_adjustment (de las opcio
 - El `production_cost` es **obligatorio** al crear o editar un producto. Nunca se devuelve en la API pública.
 - Las categorías y productos se pueden **reordenar** mediante drag-and-drop (HTML5 DnD nativo) en la vista del menú. El `sort_order` se autoasigna al crear (`max + 1` dentro del scope) y se actualiza vía endpoints `PATCH reorder`. La UI usa optimistic updates con una `localCategories` ref para respuesta inmediata.
 - Los productos solo se pueden reordenar **dentro de su misma categoría**.
+- Los **grupos de modificadores** y las **opciones de cada grupo** también se pueden reordenar por DnD dentro del formulario del producto (crear/editar) y, para los templates del catálogo, dentro del modal de `/modifier-catalog`. A diferencia de categorías/productos, **no hay endpoint `reorder` dedicado**: el orden se guarda al hacer submit del formulario, derivado del índice del array (mismo patrón que `name`, `price_adjustment`, etc.). Aislado por restaurante automáticamente vía `restaurant_id`.
 - El campo manual "Orden de visualización" fue eliminado de CategoryModal, Products/Create y Products/Edit.
 - No se puede eliminar una categoría que tenga productos activos.
 
