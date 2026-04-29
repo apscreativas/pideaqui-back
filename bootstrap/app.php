@@ -26,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
             'tenant' => \App\Http\Middleware\EnsureTenantContext::class,
             'tenant.slug' => \App\Http\Middleware\ResolveTenantFromSlug::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
