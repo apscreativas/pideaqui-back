@@ -155,7 +155,7 @@ function formatScheduledTime(dateStr) {
 const COLUMNS = [
     { key: 'received',   label: 'Recibido',        dotClass: 'bg-orange-500', borderClass: 'border-l-orange-500' },
     { key: 'preparing',  label: 'En preparación',   dotClass: 'bg-amber-400',  borderClass: 'border-l-amber-400' },
-    { key: 'on_the_way', label: 'En camino',        dotClass: 'bg-blue-500',   borderClass: 'border-l-blue-500' },
+    { key: 'on_the_way', label: 'En camino / Listo', dotClass: 'bg-blue-500',   borderClass: 'border-l-blue-500' },
     { key: 'delivered',  label: 'Entregado',        dotClass: 'bg-green-500',  borderClass: 'border-l-green-500' },
 ]
 
