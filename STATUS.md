@@ -43,6 +43,11 @@
 
 ---
 
+## Trabajo reciente (Abr 29)
+
+- **Datos bancarios en WhatsApp de pedidos por transferencia** — Cuando el cliente final paga por transferencia, el mensaje de WhatsApp que se abre al restaurante ahora incluye `Banco`, `Beneficiario`, `CLABE` y `Alias` del `payment_method` tipo `transfer` del restaurante, no sólo la etiqueta "Transferencia". Cambio aislado en `OrderService::buildWhatsAppMessage()`; el SPA cliente recibe el mensaje listo vía `OrderConfirmationResource.whatsapp_message`.
+- **Hardening del flujo de login (admin)** — Tres bugs corregidos: (1) `url.intended` rezagado apuntando a `/login` provocaba que el login exitoso recargara la misma URL sin error visible (helper `safeIntended()` ahora descarta intended hacia rutas auth/guest u hosts externos); (2) sesiones cruzadas entre guards `web` y `superadmin` (se cierra ambos guards antes del `attempt`); (3) un superadmin autenticado podía abrir `/login` porque el middleware `guest` por defecto sólo mira el guard `web` — nuevo `RedirectIfAuthenticated` chequea ambos guards y redirige al dashboard correspondiente. Registrado como alias `guest` en `bootstrap/app.php`.
+
 ## Trabajo reciente (Abr 28)
 
 - **Fix: validación de pedidos rechazaba misma opción del catálogo en items distintos** — El SPA cliente fallaba al confirmar pedidos con varios productos que compartían la misma opción del catálogo (`distinct` con wildcards anidados aplanaba todos los items). Reemplazado por trait `ValidatesItemModifiers` que valida unicidad **por item** vía `withValidator()`, aplicado en `StoreOrder`/`UpdateOrder`/`StoreManualOrder`/`StorePosSale`. Duplicados dentro de un mismo item siguen rechazados (test cubierto).

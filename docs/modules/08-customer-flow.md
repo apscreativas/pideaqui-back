@@ -177,7 +177,7 @@ La pantalla más compleja del flujo.
 **Botón "Confirmar y enviar por WhatsApp":**
 1. Se abre una **ventana en blanco** (`window.open('')`) ANTES de la llamada API para evitar el popup blocker del navegador.
 2. Se registra el pedido en DB via `POST /api/orders`.
-3. El backend responde con el ID del pedido, el número de WhatsApp de la sucursal y el `whatsapp_message` pre-generado.
+3. El backend responde con el ID del pedido, el número de WhatsApp de la sucursal y el `whatsapp_message` pre-generado por `OrderService::buildWhatsAppMessage()`. El mensaje incluye productos, modificadores, dirección o sucursal de recogida, método de pago y total. **Si el método de pago es `transfer`**, el mensaje añade un bloque "🏦 Datos para transferencia:" con `Banco`, `Beneficiario`, `CLABE` y `Alias` cargados desde el `payment_method` tipo `transfer` del restaurante (cada campo aparece sólo si está capturado).
 4. **En caso de éxito:** se redirige la ventana abierta a `wa.me/{whatsapp_sucursal}?text={mensaje_encoded}`.
 5. **En caso de error:** se cierra la ventana popup.
 6. Se guardan/actualizan los datos del cliente en cookies (90 días).

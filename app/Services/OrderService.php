@@ -689,6 +689,29 @@ class OrderService
             $lines[] = "💵 Paga con: {$fmt($order->cash_amount)}";
         }
 
+        if ($order->payment_method === 'transfer') {
+            $transfer = \App\Models\PaymentMethod::query()
+                ->where('restaurant_id', $order->restaurant_id)
+                ->where('type', 'transfer')
+                ->first();
+
+            if ($transfer) {
+                $lines[] = '🏦 Datos para transferencia:';
+                if ($transfer->bank_name) {
+                    $lines[] = "   • Banco: {$transfer->bank_name}";
+                }
+                if ($transfer->account_holder) {
+                    $lines[] = "   • Beneficiario: {$transfer->account_holder}";
+                }
+                if ($transfer->clabe) {
+                    $lines[] = "   • CLABE: {$transfer->clabe}";
+                }
+                if ($transfer->alias) {
+                    $lines[] = "   • Alias: {$transfer->alias}";
+                }
+            }
+        }
+
         $lines[] = '';
         $lines[] = "Subtotal: {$fmt($order->subtotal)}";
 
