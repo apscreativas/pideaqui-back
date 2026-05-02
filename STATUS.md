@@ -43,6 +43,12 @@
 
 ---
 
+## Trabajo reciente (May 02)
+
+- **Nuevo reporte "Historial de pedidos"** (`/orders/history`) — Visible para admin y operator (operator filtrado por sus sucursales asignadas). Permite filtrar por rango de fechas (default 7 días), sucursal y status (todos/entregados/cancelados). Tabla con Pedido, Fecha-Hora, Cliente, Teléfono, Sucursal, Total, Costo y Utilidad; los pedidos cancelados aparecen en rojo con badge "CANCELADO". Las sumatorias de Total/Costo/Utilidad se calculan sobre el rango filtrado completo (no la página visible) y se muestran en KPIs arriba + `<tfoot>` de la tabla. El botón de detalle abre `/orders/{id}` en **nueva pestaña** (sólo en este reporte) para no perder el contexto del filtro. Cálculo de costo y utilidad por pedido movido a `Order::productionCost()` y `Order::profit()` para reutilizar entre backend y frontend. Nuevo nav "Historial de pedidos" debajo de "Pedidos" en `AppLayout.vue`. **No incluye columna "Correo"**: la tabla `customers` no captura email; pendiente como scope futuro si se decide capturar. 9 tests nuevos en `OrderHistoryControllerTest`.
+- **UI: status del audit trail traducidos en `/orders/{id}`** — En la sección "Historial" del detalle del pedido, los textos `received → preparing` ahora se muestran como `Recibido → En preparación`, etc. Mapa `STATUS_LABELS` + helper `statusLabel()` en `Pages/Orders/Show.vue`. Sólo afecta render — los valores en BD siguen en inglés.
+- **UI: columna "En camino" del kanban de `/orders` renombrada a "En camino / Listo"** — para reflejar mejor el flujo cuando el pedido es para recoger. Cambio cosmético en `Pages/Orders/Index.vue`; otras vistas conservan "En camino".
+
 ## Trabajo reciente (Abr 29)
 
 - **Datos bancarios en WhatsApp de pedidos por transferencia** — Cuando el cliente final paga por transferencia, el mensaje de WhatsApp que se abre al restaurante ahora incluye `Banco`, `Beneficiario`, `CLABE` y `Alias` del `payment_method` tipo `transfer` del restaurante, no sólo la etiqueta "Transferencia". Cambio aislado en `OrderService::buildWhatsAppMessage()`; el SPA cliente recibe el mensaje listo vía `OrderConfirmationResource.whatsapp_message`.

@@ -48,6 +48,7 @@ const allNavItems = [
     { name: 'Dashboard', route: 'dashboard', icon: 'dashboard', roles: ['admin', 'operator'] },
     { name: 'POS', route: 'pos.index', icon: 'point_of_sale', roles: ['admin', 'operator'] },
     { name: 'Pedidos', route: 'orders.index', icon: 'receipt_long', roles: ['admin', 'operator'] },
+    { name: 'Historial de pedidos', route: 'orders.history', icon: 'history', roles: ['admin', 'operator'] },
     { name: 'Menú Digital', route: 'menu.index', icon: 'restaurant_menu', roles: ['admin'] },
     { name: 'Catálogo Modif.', route: 'modifier-catalog.index', icon: 'tune', roles: ['admin'] },
     { name: 'Promociones', route: 'promotions.index', icon: 'sell', roles: ['admin'] },
@@ -65,6 +66,13 @@ const navItems = computed(() => {
 })
 
 function isActive(routeName) {
+    const current = route().current()
+    // Si la ruta actual coincide exactamente con otro item del menú, ese item
+    // gana — evita que rutas como `orders.history` activen también `Pedidos`
+    // por compartir el prefijo `orders.*`.
+    if (current && current !== routeName && allNavItems.some((i) => i.route === current)) {
+        return current === routeName
+    }
     if (route().current(routeName + '*') || route().current(routeName)) return true
     const prefix = routeName.replace(/\.index$/, '')
     return route().current(prefix + '.*')

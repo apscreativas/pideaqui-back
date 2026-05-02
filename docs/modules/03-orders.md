@@ -62,6 +62,34 @@ received / preparing / on_the_way  →  cancelled
 - Alerta sonora al recibir pedido nuevo (polling o broadcasting).
 - Indicador "X pedidos del mes / límite" en la parte superior del Kanban.
 
+### `ar_07` — Historial de pedidos (`/orders/history`)
+
+Reporte tabular con sumatorias para que el restaurante revise pedidos de un rango arbitrario sin perder el contexto del Kanban operativo (que sólo muestra pedidos vigentes).
+
+**Acceso:** admin y operator. El operator ve sólo los pedidos de las sucursales asignadas (vía `User::allowedBranchIds()`).
+
+**Filtros:**
+- **Rango de fechas** — date pickers + presets rápidos (Hoy, Ayer, 7 días, Mes). Default: últimos 7 días.
+- **Sucursal** — `branches` del restaurante.
+- **Estatus** — `Todos` / `Entregados` / `Cancelados`. Default: Todos.
+- **Por página** — 20 / 50 / 100.
+
+**Columnas de la tabla:** Pedido (`#0001` + badge "CANCELADO" si aplica) · Fecha-Hora · Cliente (nombre) · Teléfono · Sucursal · Total · Costo · Utilidad · Detalle.
+
+**Sumatorias:** se calculan sobre el **rango filtrado completo**, no sobre la página visible. Aparecen en 4 KPIs arriba (Pedidos / Total / Costo / Utilidad) y en `<tfoot>` de la tabla. Implementación: dos consultas a la misma `$base` query — una `get()` con `items.modifiers` precargados para sumar en PHP, otra `paginate()` para mostrar.
+
+**Cálculo de costo y utilidad:** vive en métodos del modelo `Order`:
+- `Order::productionCost()` — suma de `production_cost` snapshot de cada `OrderItem` × qty + suma de `production_cost` snapshot de cada `OrderItemModifier` × qty del item padre.
+- `Order::profit()` — `subtotal − productionCost() − discount_amount`. **No** descuenta `delivery_cost` (es passthrough al repartidor) ni `cash_amount`.
+
+**Pedidos cancelados:** se incluyen por default (filas en rojo + badge). Si el usuario quiere ver únicamente venta real, usa el filtro "Entregados".
+
+**Detalle:** el botón "open_in_new" abre `/orders/{id}` en **nueva pestaña** (`<a target="_blank" rel="noopener">`, no Inertia `<Link>`) — diferencia consciente con el resto de la app, para no perder el contexto del filtro al revisar pedidos uno por uno.
+
+**No incluye columna "Correo":** la tabla `customers` no captura `email` (el SPA cliente nunca lo pide). Pendiente como scope futuro si se decide capturar.
+
+---
+
 ### `ar_06` — Detalle del Pedido (`/orders/{id}`)
 
 **Secciones de la comanda completa:**

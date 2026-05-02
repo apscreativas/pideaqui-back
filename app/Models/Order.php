@@ -112,4 +112,29 @@ class Order extends Model
     {
         return $this->hasMany(OrderAudit::class)->orderBy('created_at');
     }
+
+    /**
+     * Costo de producción del pedido — suma del snapshot de cada item
+     * (`production_cost` en `order_items`) + sus modificadores
+     * (`production_cost` en `order_item_modifiers`), multiplicado por qty.
+     * Requiere `items.modifiers` precargados para evitar N+1.
+     */
+    public function productionCost(): float
+    {
+        return (float) $this->items->sum(function (OrderItem $item): float {
+            $base = (float) $item->production_cost * $item->quantity;
+            $mods = $item->modifiers->sum(fn ($m) => (float) $m->production_cost * $item->quantity);
+
+            return $base + $mods;
+        });
+    }
+
+    /**
+     * Utilidad neta del pedido = subtotal − costo de producción − descuento por
+     * cupón. No descuenta `delivery_cost` (es passthrough) ni `cash_amount`.
+     */
+    public function profit(): float
+    {
+        return (float) $this->subtotal - $this->productionCost() - (float) $this->discount_amount;
+    }
 }

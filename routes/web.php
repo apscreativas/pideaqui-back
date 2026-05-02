@@ -19,6 +19,7 @@ use App\Http\Controllers\MapController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\ModifierCatalogController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderHistoryController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\ProductController;
@@ -82,6 +83,7 @@ Route::middleware(['auth', 'verified', 'tenant'])->group(function (): void {
     // Pedidos — ambos roles (controller filtra por branch para operators)
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/new-count', [OrderController::class, 'newCount'])->name('orders.new-count');
+    Route::get('/orders/history', [OrderHistoryController::class, 'index'])->name('orders.history');
     Route::get('/orders/create', [OrderController::class, 'create'])->name('orders.create');
     Route::post('/orders/preview-delivery', [OrderController::class, 'previewDelivery'])->middleware('throttle:60,1')->name('orders.preview-delivery');
     Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('orders.store');

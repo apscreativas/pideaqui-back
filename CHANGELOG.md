@@ -5,6 +5,22 @@
 
 ---
 
+## Mayo 2026
+
+### 2026-05-02
+
+- **Feature: nuevo reporte "Historial de pedidos"** (`/orders/history`) — Hasta hoy, los restaurantes no tenían forma de visualizar el historial completo de sus pedidos en un rango arbitrario de fechas. Ahora hay un reporte dedicado para admin y operator (este último ve sólo las sucursales que tiene asignadas vía `User::allowedBranchIds()`):
+  - **Backend**: nuevo `app/Http/Controllers/OrderHistoryController.php` con filtros `from`, `to`, `branch_id`, `status` (`all` | `delivered` | `cancelled`) y paginación 20/50/100. Default: últimos 7 días, todos los estatus. La ruta `GET /orders/history` se registra **antes** de `/orders/{order}` en `routes/web.php` para evitar que `{order}` capture el slug `history`.
+  - **Cálculos**: las sumatorias de Total, Costo y Utilidad se calculan sobre el **rango filtrado completo**, no sólo sobre la página visible (dos consultas a la misma `$base`: una `get()` para sumar, una `paginate()` para mostrar). El cálculo de costo y utilidad por pedido se movió desde `Pages/Orders/Show.vue` a métodos del modelo: `Order::productionCost()` (suma snapshots `production_cost` de items + modificadores × qty) y `Order::profit()` (`subtotal − productionCost − discount_amount`; no descuenta `delivery_cost` por ser passthrough).
+  - **Aislamiento por tenant**: filtra por `restaurant_id` del usuario autenticado y aplica `whereIn('branch_id', $allowedBranches)` cuando el guard es operator (mismo patrón que `OrderController@index`).
+  - **Frontend** (`resources/js/Pages/Orders/History.vue`, nuevo): tabla con columnas Pedido / Fecha-Hora / Cliente / Teléfono / Sucursal / Total / Costo / Utilidad + botón de detalle. Las filas de pedidos cancelados aparecen en rojo con badge "CANCELADO". 4 KPIs arriba (Pedidos, Total, Costo, Utilidad) y `<tfoot>` con sumatorias. Filtros: presets (Hoy/Ayer/7 días/Mes), date pickers, sucursal, estatus.
+  - **Detalle abre en nueva pestaña**: el botón "open_in_new" usa `<a target="_blank" rel="noopener">` (no Inertia `<Link>`) **sólo en este reporte**, para no perder el contexto del filtro al revisar pedidos uno por uno. El resto de la app sigue navegando por Inertia.
+  - **Sidebar**: nuevo item "Historial de pedidos" (icono `history`) debajo de "Pedidos" en `AppLayout.vue`. La función `isActive()` se ajustó para que cuando la ruta actual coincide exactamente con otro item del menú, ese item gane sobre el match por prefijo (`orders.*`) — antes `/orders/history` activaba también "Pedidos".
+  - **No se incluyó columna "Correo"** que originalmente se pidió: la tabla `customers` no tiene campo `email` (el SPA cliente nunca lo captura). Decisión consciente del usuario; pendiente como scope futuro si se decide capturarlo.
+  - 9 tests nuevos en `tests/Feature/OrderHistoryControllerTest.php` (auth, roles, filtros de status, filtro por sucursal, sumatorias del rango completo, costo de modificadores, aislamiento entre restaurantes).
+- **UI: traducción visual de status en el "Historial" del detalle del pedido** (`/orders/{id}`) — en la sección "Historial" (audit trail de cambios de estatus), los textos `received → preparing`, `preparing → on_the_way`, etc. ahora se muestran traducidos: `Recibido → En preparación`, `En preparación → En camino`, etc. Se agregó un mapa `STATUS_LABELS` y helper `statusLabel()` en `Pages/Orders/Show.vue` que sólo afecta el render — los valores en `order_events.from_status`/`to_status` siguen en inglés en BD.
+- **UI: renombrada columna "En camino" del kanban de `/orders` a "En camino / Listo"** — ajuste solicitado para reflejar mejor el flujo cuando el pedido es para recoger en sucursal y queda "Listo" en lugar de "En camino" físico. Cambio puramente cosmético en `Pages/Orders/Index.vue`; las otras vistas (Dashboard, Map, Show) conservan "En camino" intencionalmente.
+
 ## Abril 2026
 
 ### 2026-04-29

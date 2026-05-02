@@ -25,6 +25,18 @@ const STATUS_STEPS = [
     { key: 'delivered',  label: 'Entregado',    icon: 'check_circle' },
 ]
 
+const STATUS_LABELS = {
+    received:   'Recibido',
+    preparing:  'En preparación',
+    on_the_way: 'En camino',
+    delivered:  'Entregado',
+    cancelled:  'Cancelado',
+}
+
+function statusLabel(key) {
+    return STATUS_LABELS[key] ?? key
+}
+
 const NEXT_LABEL = {
     received:   'Marcar en preparación',
     preparing:  'Marcar en camino',
@@ -791,7 +803,7 @@ async function copyOrder() {
                                     <template v-if="event.action === 'created'">Pedido creado</template>
                                     <template v-else-if="event.action === 'cancelled'">Pedido cancelado</template>
                                     <template v-else>
-                                        {{ event.from_status }} → {{ event.to_status }}
+                                        {{ statusLabel(event.from_status) }} → {{ statusLabel(event.to_status) }}
                                     </template>
                                 </p>
                                 <p class="text-xs text-gray-500">
